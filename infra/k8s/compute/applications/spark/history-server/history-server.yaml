@@ -1,0 +1,173 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-history-server
+  namespace: default
+  labels:
+    app: spark-history-server
+    component: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-history-server
+  template:
+    metadata:
+      labels:
+        app: spark-history-server
+        component: monitoring
+    spec:
+      containers:
+        - name: spark-history-server
+          # -------------------------------------------------------
+          # Image chuyên dụng cho History Server
+          # Xem: spark-jobs/spark-history-server/Dockerfile
+          # Chỉ chứa: apache/spark:3.5.0-python3 + hadoop-aws JARs
+          # KHÔNG có: Iceberg, Kafka, application code
+          # Build: cd spark-jobs/spark-history-server && ./build-image.sh
+          # -------------------------------------------------------
+          image: hungvt0110/spark-history-server:latest
+          imagePullPolicy: Always
+
+          # Chạy History Server ở FOREGROUND mode
+          # KHÔNG dùng start-history-server.sh vì nó chạy daemon (background)
+          # -> container exit ngay -> K8s restart loop
+          # Dùng spark-class chạy trực tiếp HistoryServer class = foreground process
+          command:
+            - /opt/spark/bin/spark-class
+            - org.apache.spark.deploy.history.HistoryServer
+
+          env:
+            # -------------------------------------------------------
+            # Spark History Server KHÔNG kết nối với Spark Operator.
+            # Cả 2 độc lập nhau - chúng chỉ chia sẻ qua MinIO:
+            #   Spark Operator -> chạy job -> ghi logs vào s3a://spark-logs/
+            #   History Server -> đọc logs từ s3a://spark-logs/ -> hiển thị UI
+            # -------------------------------------------------------
+            - name: SPARK_HISTORY_OPTS
+              value: >-
+                -Dspark.history.fs.logDirectory=s3a://spark-logs/event-logs
+                -Dspark.history.ui.port=18080
+                -Dspark.history.retainedApplications=50
+                -Dspark.history.fs.cleaner.enabled=true
+                -Dspark.history.fs.cleaner.interval=1d
+                -Dspark.history.fs.cleaner.maxAge=7d
+                -Dspark.history.fs.update.interval=10s
+
+            # Dùng spark-logs-user - chỉ có quyền đọc bucket spark-logs
+            - name: AWS_ACCESS_KEY_ID
+              value: "admin"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "admin123"
+
+            # Cần set HOME để tránh lỗi ivy cache
+            - name: HOME
+              value: "/tmp"
+
+          volumeMounts:
+            - name: spark-conf
+              mountPath: /opt/spark/conf/spark-defaults.conf
+              subPath: spark-defaults.conf
+
+          ports:
+            - containerPort: 18080
+              name: web-ui
+
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "500m"
+              memory: "1Gi"
+
+      volumes:
+        - name: spark-conf
+          configMap:
+            name: spark-history-server-conf
+
+---
+# ConfigMap chứa spark-defaults.conf cho History Server
+# S3A cần được cấu hình ở đây vì SPARK_HISTORY_OPTS chỉ nhận Dspark.* properties
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-history-server-conf
+  namespace: default
+data:
+  spark-defaults.conf: |
+    # -------------------------------------------------------
+    # S3A Configuration - đọc event logs từ MinIO LOG server (riêng biệt)
+    # -------------------------------------------------------
+    spark.hadoop.fs.s3a.endpoint                            http://openhouse-minio-log:9000
+    spark.hadoop.fs.s3a.access.key                          admin
+    spark.hadoop.fs.s3a.secret.key                          admin123
+    spark.hadoop.fs.s3a.path.style.access                   true
+    spark.hadoop.fs.s3a.connection.ssl.enabled              false
+    spark.hadoop.fs.s3a.impl                                org.apache.hadoop.fs.s3a.S3AFileSystem
+    spark.hadoop.fs.s3a.aws.credentials.provider            org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider
+
+    # Credentials: admin/admin123 trên MinIO LOG server
+    spark.hadoop.fs.s3a.bucket.spark-logs.access.key        admin
+    spark.hadoop.fs.s3a.bucket.spark-logs.secret.key        admin123
+    spark.hadoop.fs.s3a.bucket.spark-logs.endpoint          http://openhouse-minio-log:9000
+
+    # -------------------------------------------------------
+    # History Server Settings
+    # -------------------------------------------------------
+    spark.history.fs.logDirectory                           s3a://spark-logs/event-logs
+    spark.history.ui.port                                   18080
+    spark.history.retainedApplications                      50
+    spark.history.fs.cleaner.enabled                        true
+    spark.history.fs.cleaner.interval                       1d
+    spark.history.fs.cleaner.maxAge                         7d
+    spark.history.fs.inProgressOptimization.enabled         false
+    # Polling interval - History Server tự refresh mỗi 10s
+    spark.history.fs.update.interval                        10s
+
+---
+# Service để expose Spark History Server UI
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-history-server
+  namespace: default
+  labels:
+    app: spark-history-server
+spec:
+  selector:
+    app: spark-history-server
+  ports:
+    - name: web-ui
+      port: 18080
+      targetPort: 18080
+  type: ClusterIP
+
+---
+# Ingress để truy cập Spark History Server UI từ browser
+# Sử dụng nginx IngressClass (cùng pattern với Lakekeeper, MinIO trong project)
+# Thêm vào /etc/hosts: <cluster-ip> openhouse.spark-history.test
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spark-history-server
+  namespace: default
+  labels:
+    app: spark-history-server
+  annotations:
+    # Spark History Server UI dùng relative paths -> KHÔNG cần rewrite-target
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: openhouse.spark-history.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: spark-history-server
+                port:
+                  number: 18080

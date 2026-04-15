@@ -1,0 +1,75 @@
+Name:             openhouse-minio-0
+Namespace:        default
+Priority:         0
+Service Account:  openhouse-minio
+Node:             <none>
+Labels:           app.kubernetes.io/component=minio
+                  app.kubernetes.io/instance=openhouse-minio
+                  app.kubernetes.io/managed-by=Helm
+                  app.kubernetes.io/name=minio
+                  app.kubernetes.io/part-of=minio
+                  app.kubernetes.io/version=2025.7.23
+                  apps.kubernetes.io/pod-index=0
+                  controller-revision-hash=openhouse-minio-dd64cbff8
+                  helm.sh/chart=minio-17.0.22
+                  statefulset.kubernetes.io/pod-name=openhouse-minio-0
+Annotations:      checksum/credentials-secret: 10dbaedbecb72f26e15b93d427f22e95c521c9f92fc86da9c266afc9e98d781a
+Status:           Pending
+IP:               
+IPs:              <none>
+Controlled By:    StatefulSet/openhouse-minio
+Containers:
+  minio:
+    Image:           docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r3
+    Port:            9000/TCP
+    Host Port:       0/TCP
+    SeccompProfile:  RuntimeDefault
+    Limits:
+      memory:  5Gi
+    Requests:
+      memory:   512Mi
+    Liveness:   http-get http://:api/minio/health/live delay=5s timeout=5s period=5s #success=1 #failure=5
+    Readiness:  tcp-socket :api delay=5s timeout=1s period=5s #success=1 #failure=5
+    Environment:
+      BITNAMI_DEBUG:                   false
+      MINIO_DISTRIBUTED_MODE_ENABLED:  yes
+      MINIO_DISTRIBUTED_NODES:         openhouse-minio-{0...3}.openhouse-minio-headless.default.svc.cluster.local:9000/bitnami/minio/data
+      MINIO_SCHEME:                    http
+      MINIO_FORCE_NEW_KEYS:            no
+      MINIO_ROOT_USER_FILE:            /opt/bitnami/minio/secrets/root-user
+      MINIO_ROOT_PASSWORD_FILE:        /opt/bitnami/minio/secrets/root-password
+      MINIO_SKIP_CLIENT:               yes
+      MINIO_API_PORT_NUMBER:           9000
+      MINIO_BROWSER:                   off
+      MINIO_PROMETHEUS_AUTH_TYPE:      public
+      MINIO_DATA_DIR:                  /bitnami/minio/data
+    Mounts:
+      /.mc from empty-dir (rw,path="app-mc-dir")
+      /bitnami/minio/data from data (rw)
+      /opt/bitnami/minio/secrets/ from minio-credentials (rw)
+      /opt/bitnami/minio/tmp from empty-dir (rw,path="app-tmp-dir")
+      /tmp from empty-dir (rw,path="tmp-dir")
+Conditions:
+  Type           Status
+  PodScheduled   False 
+Volumes:
+  data:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  data-openhouse-minio-0
+    ReadOnly:   false
+  empty-dir:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  <unset>
+  minio-credentials:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  openhouse-minio
+    Optional:    false
+QoS Class:       Burstable
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                 node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason            Age   From               Message
+  ----     ------            ----  ----               -------
+  Warning  FailedScheduling  83s   default-scheduler  0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims. preemption: 0/1 nodes are available: 1 Preemption is not helpful for scheduling.

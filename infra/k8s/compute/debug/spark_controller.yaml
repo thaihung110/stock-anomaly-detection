@@ -1,0 +1,91 @@
+Name:             openhouse-spark-operator-controller-d88fc477-ld7dc
+Namespace:        default
+Priority:         0
+Service Account:  openhouse-spark-operator-controller
+Node:             minikube/192.168.49.2
+Start Time:       Mon, 01 Dec 2025 14:48:20 +0700
+Labels:           app.kubernetes.io/component=controller
+                  app.kubernetes.io/instance=openhouse-spark-operator
+                  app.kubernetes.io/name=spark-operator
+                  pod-template-hash=d88fc477
+Annotations:      prometheus.io/path: /metrics
+                  prometheus.io/port: 8080
+                  prometheus.io/scrape: true
+Status:           Running
+IP:               10.244.0.176
+IPs:
+  IP:           10.244.0.176
+Controlled By:  ReplicaSet/openhouse-spark-operator-controller-d88fc477
+Containers:
+  spark-operator-controller:
+    Container ID:    docker://531e5366ae01b424af8bedb76d273c3cdbbb17131c3c489c8643f731ed48375c
+    Image:           ghcr.io/kubeflow/spark-operator/controller:2.4.0
+    Image ID:        docker-pullable://ghcr.io/kubeflow/spark-operator/controller@sha256:067ee9171ac3d9f2b83199cba9a87d4f069ad8453088f07657569f188e0251b4
+    Port:            8080/TCP
+    Host Port:       0/TCP
+    SeccompProfile:  RuntimeDefault
+    Args:
+      controller
+      start
+      --zap-log-level=info
+      --zap-encoder=console
+      --namespaces=default
+      --controller-threads=10
+      --enable-ui-service=true
+      --enable-metrics=true
+      --metrics-bind-address=:8080
+      --metrics-endpoint=/metrics
+      --metrics-prefix=
+      --metrics-labels=app_type
+      --metrics-job-start-latency-buckets=30,60,90,120,150,180,210,240,270,300
+      --leader-election=true
+      --leader-election-lock-name=openhouse-spark-operator-controller-lock
+      --leader-election-lock-namespace=default
+      --leader-election-lease-duration=15s
+      --leader-election-renew-deadline=10s
+      --leader-election-retry-period=2s
+      --workqueue-ratelimiter-bucket-qps=50
+      --workqueue-ratelimiter-bucket-size=500
+      --workqueue-ratelimiter-max-delay=6h
+      --driver-pod-creation-grace-period=10s
+      --max-tracked-executor-per-app=1000
+    State:          Running
+      Started:      Mon, 01 Dec 2025 14:53:05 +0700
+    Ready:          True
+    Restart Count:  0
+    Liveness:       http-get http://:8081/healthz delay=0s timeout=1s period=10s #success=1 #failure=3
+    Readiness:      http-get http://:8081/readyz delay=0s timeout=1s period=10s #success=1 #failure=3
+    Environment:    <none>
+    Mounts:
+      /tmp from tmp (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-rscvq (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:
+  tmp:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     
+    SizeLimit:  1Gi
+  kube-api-access-rscvq:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   BestEffort
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type    Reason     Age    From               Message
+  ----    ------     ----   ----               -------
+  Normal  Scheduled  5m32s  default-scheduler  Successfully assigned default/openhouse-spark-operator-controller-d88fc477-ld7dc to minikube
+  Normal  Pulling    5m31s  kubelet            Pulling image "ghcr.io/kubeflow/spark-operator/controller:2.4.0"
+  Normal  Pulled     48s    kubelet            Successfully pulled image "ghcr.io/kubeflow/spark-operator/controller:2.4.0" in 8.548s (4m45.063s including waiting). Image size: 1351564529 bytes.
+  Normal  Created    47s    kubelet            Created container: spark-operator-controller
+  Normal  Started    47s    kubelet            Started container spark-operator-controller

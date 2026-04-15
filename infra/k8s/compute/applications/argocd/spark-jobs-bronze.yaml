@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spark-jobs-bronze
+  namespace: argocd
+  labels:
+    app: data-lakehouse
+    layer: bronze
+  # Finalizers ensure proper cleanup
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # ArgoCD project
+  project: default
+
+  # Source: Git repository
+  source:
+    repoURL: https://github.com/your-org/data-platform.git # TODO: Update with actual repo URL
+    targetRevision: main
+    path: infra/k8s/compute/applications/spark/bronze-layer/jobs
+
+    # Directory application - sync all YAML files in the jobs/ directory
+    directory:
+      recurse: true
+      include: "*.yaml"
+
+  # Destination: Kubernetes cluster
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-platform
+
+  # Sync policy
+  syncPolicy:
+    # Automatic syncing
+    automated:
+      prune: true # Delete K8s resources not in Git
+      selfHeal: true # Auto-sync when K8s drifts from Git
+      allowEmpty: false # Prevent syncing empty repos
+
+    # Sync options
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+
+    # Retry policy for failed syncs
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Ignore differences in status fields (SparkApplication status changes frequently)
+  ignoreDifferences:
+    - group: sparkoperator.k8s.io
+      kind: SparkApplication
+      jsonPointers:
+        - /status # Ignore status changes
+        - /metadata/generation # Ignore generation changes
+
+  # Health assessment
+  statusBadgeEnabled: true

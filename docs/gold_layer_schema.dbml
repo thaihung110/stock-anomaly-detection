@@ -1,0 +1,209 @@
+Table dim_symbol {
+    symbol_key integer [primary key]
+    symbol varchar(20) [not null]
+    company_name varchar(200)
+    exchange varchar(20)
+    sector varchar(100)
+    industry varchar(200)
+    country varchar(50)
+    currency varchar(5)
+    market_cap bigint
+    shares_outstanding bigint
+    beta double
+    week_52_high double
+    week_52_low double
+    is_active boolean [default: true]
+    effective_from date [not null]
+    effective_to date
+    source varchar(20) [default: 'yfinance']
+}
+
+Table dim_date {
+    date_key integer [primary key]
+    full_date date [not null]
+    day_of_week integer
+    day_name varchar(10)
+    day_of_month integer
+    day_of_year integer
+    week_of_year integer
+    month_number integer
+    month_name varchar(10)
+    quarter integer
+    year integer
+    is_weekend boolean
+    is_us_market_holiday boolean
+    is_trading_day boolean
+    trading_day_number integer
+}
+
+Table dim_time {
+    time_key integer [primary key]
+    hour integer
+    minute integer
+    time_label varchar(8)
+    market_session varchar(20)
+    session_minute integer
+    is_opening_hour boolean
+    is_closing_hour boolean
+}
+
+Table dim_anomaly_type {
+    anomaly_type_key integer [primary key]
+    anomaly_type varchar(30) [not null]
+    anomaly_category varchar(20)
+    description text
+    typical_cause text
+    risk_level varchar(10)
+}
+
+Table dim_rule {
+    rule_key integer [primary key]
+    rule_code varchar(30) [not null]
+    rule_name varchar(100)
+    formula_description text
+    threshold_default double
+    severity_if_alone varchar(10)
+}
+
+Table dim_news_category {
+    category_key integer [primary key]
+    category_code varchar(30) [not null]
+    category_name varchar(100)
+    description text
+    typical_price_impact varchar(20)
+}
+
+Table fact_ohlcv_daily {
+    symbol_key integer [not null]
+    date_key integer [not null]
+    open double [not null]
+    high double [not null]
+    low double [not null]
+    close double [not null]
+    adj_close double
+    vwap double
+    volume bigint [not null]
+    dollar_volume double
+    daily_return double
+    log_return double
+    intraday_range_pct double
+    gap_pct double
+    mean_return_20d double
+    std_return_20d double
+    mean_volume_20d double
+    std_volume_20d double
+    price_zscore double
+    volume_zscore double
+    rsi_14 double
+    macd_line double
+    macd_signal double
+    macd_histogram double
+    bb_upper double
+    bb_lower double
+    bb_mid double
+    bb_position double
+    atr_14 double
+    data_source varchar(20)
+    loaded_at timestamp
+
+    Indexes {
+        (symbol_key, date_key) [pk]
+    }
+}
+
+Table fact_anomaly_daily {
+    anomaly_id bigint [primary key]
+    symbol_key integer [not null]
+    date_key integer [not null]
+    time_key integer [not null]
+    anomaly_type_key integer [not null]
+    news_category_key integer
+    detected_at timestamp [not null]
+    granularity varchar(5) [default: '1d']
+    severity varchar(10)
+    triggered_rules text
+    price double
+    daily_return double
+    price_zscore double
+    volume bigint
+    volume_zscore double
+    volume_ratio_20d double
+    intraday_range_pct double
+    vwap_deviation_pct double
+    rsi_14 double
+    bb_position double
+    llm_judgement varchar(30)
+    llm_explanation text
+    news_articles_found integer
+    llm_processed_at timestamp
+    portfolio_flag boolean [default: false]
+    alert_sent boolean [default: false]
+    alert_sent_at timestamp
+}
+
+Table fact_alert_history {
+    alert_id bigint [primary key]
+    anomaly_id bigint [not null]
+    symbol_key integer [not null]
+    date_key integer [not null]
+    time_key integer [not null]
+    alerted_at timestamp [not null]
+    delivery_channel varchar(20) [default: 'telegram']
+    delivery_status varchar(20)
+    llm_judgement varchar(30)
+    severity varchar(10)
+    telegram_msg_id bigint
+    telegram_chat_id bigint
+    acknowledged_at timestamp
+    acknowledged_by varchar(100)
+}
+
+Table rule_engine_context {
+    symbol varchar(20) [not null]
+    as_of_date date [not null]
+    mean_return_20d double
+    std_return_20d double
+    mean_return_5d double
+    std_return_5d double
+    mean_volume_20d double
+    std_volume_20d double
+    mean_volume_5d double
+    bb_upper_20d double
+    bb_lower_20d double
+    bb_mid_20d double
+    atr_14 double
+    rsi_14 double
+    vwap_5d_avg double
+    updated_at timestamp
+
+    Indexes {
+        (symbol, as_of_date) [pk]
+    }
+}
+
+// Foreign Keys Definition
+Ref: fact_ohlcv_daily.symbol_key > dim_symbol.symbol_key
+Ref: fact_ohlcv_daily.date_key > dim_date.date_key
+
+Ref: fact_anomaly_daily.symbol_key > dim_symbol.symbol_key
+Ref: fact_anomaly_daily.date_key > dim_date.date_key
+Ref: fact_anomaly_daily.time_key > dim_time.time_key
+Ref: fact_anomaly_daily.anomaly_type_key > dim_anomaly_type.anomaly_type_key
+Ref: fact_anomaly_daily.news_category_key > dim_news_category.category_key
+
+Ref: fact_alert_history.anomaly_id > fact_anomaly_daily.anomaly_id
+Ref: fact_alert_history.symbol_key > dim_symbol.symbol_key
+Ref: fact_alert_history.date_key > dim_date.date_key
+Ref: fact_alert_history.time_key > dim_time.time_key
+
+Table bridge_anomaly_rule {
+    anomaly_id bigint [not null]
+    rule_key integer [not null]
+
+    Indexes {
+        (anomaly_id, rule_key) [pk]
+    }
+}
+
+Ref: bridge_anomaly_rule.anomaly_id > fact_anomaly_daily.anomaly_id
+Ref: bridge_anomaly_rule.rule_key > dim_rule.rule_key

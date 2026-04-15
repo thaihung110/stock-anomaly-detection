@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: streaming-test-producer
+  namespace: dmp-lakehouse-demo
+  labels:
+    app: streaming-test-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: streaming-test-producer
+  template:
+    metadata:
+      labels:
+        app: streaming-test-producer
+    spec:
+      containers:
+        - name: producer
+          image: hub.vtcc.vn:8989/strimzi/kafka:latest-kafka-3.9.1
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Generate producer properties combining SASL config with user's specific configs
+              cat <<EOF > /tmp/producer.properties
+              security.protocol=SASL_SSL
+              sasl.mechanism=SCRAM-SHA-512
+              sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required username="raw-producer" password="${PRODUCER_PASSWORD}";
+              ssl.truststore.type=PEM
+              ssl.truststore.location=/etc/kafka/certs/ca/ca.crt
+              EOF
+
+              echo "Starting producer loop..."
+              while true; do
+                ROOT_TS=$(date +%s%3N) 
+                
+                for ((i=1; i<=100; i++)); do
+                  echo "{\"id\": $i, \"data\": \"streaming-test\", \"ts\": $((ROOT_TS + i))}"
+                done
+                
+                sleep 2 
+              done | bin/kafka-console-producer.sh \
+                --bootstrap-server lakehouse-kafka-kafka-bootstrap:9094 \
+                --topic raw-ingress \
+                --producer.config /tmp/producer.properties \
+                --producer-property acks=1 \
+                --producer-property compression.type=snappy \
+                --producer-property batch.size=65536 \
+                --producer-property linger.ms=20
+          env:
+            - name: PRODUCER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: raw-producer
+          volumeMounts:
+            - mountPath: /etc/kafka/certs/ca
+              name: cluster-ca
+              readOnly: true
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              memory: 256Mi
+      volumes:
+        - name: cluster-ca
+          secret:
+            defaultMode: 420
+            secretName: lakehouse-kafka-cluster-ca-cert

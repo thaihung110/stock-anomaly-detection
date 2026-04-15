@@ -1,0 +1,567 @@
+---
+# Source: minio/templates/console/networkpolicy.yaml
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: openhouse-minio-console
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2.0.2
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: minio
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: openhouse-minio
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: console
+      app.kubernetes.io/part-of: minio
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - {}
+  ingress:
+    # Allow inbound connections
+    - ports:
+        - port: 9090
+---
+# Source: minio/templates/networkpolicy.yaml
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: openhouse-minio
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: openhouse-minio
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: minio
+      app.kubernetes.io/part-of: minio
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - {}
+  ingress:
+    # Allow inbound connections
+    - ports:
+        - port: 9000
+---
+# Source: minio/templates/console/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: openhouse-minio-console
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2.0.2
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: minio
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: openhouse-minio
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: console
+      app.kubernetes.io/part-of: minio
+---
+# Source: minio/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: openhouse-minio
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: openhouse-minio
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: minio
+      app.kubernetes.io/part-of: minio
+---
+# Source: minio/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openhouse-minio
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/part-of: minio
+automountServiceAccountToken: false
+secrets:
+  - name: openhouse-minio
+---
+# Source: minio/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openhouse-minio
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+type: Opaque
+data:
+  root-user: "YWRtaW4="
+  root-password: "YWRtaW4xMjM="
+---
+# Source: minio/templates/console/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhouse-minio-console
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2.0.2
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: minio
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+      nodePort: null
+  selector:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: minio
+---
+# Source: minio/templates/headless-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhouse-minio-headless
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: tcp-api
+      port: 9000
+      targetPort: api
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+---
+# Source: minio/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhouse-minio
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+spec:
+  type: ClusterIP
+  ports:
+    - name: tcp-api
+      port: 9000
+      targetPort: api
+      nodePort: null
+  selector:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+---
+# Source: minio/templates/console/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhouse-minio-console
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2.0.2
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: minio
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: openhouse-minio
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: console
+      app.kubernetes.io/part-of: minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: openhouse-minio
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: minio
+        app.kubernetes.io/version: 2025.7.23
+        helm.sh/chart: minio-17.0.22
+        app.kubernetes.io/component: console
+        app.kubernetes.io/part-of: minio
+    spec:
+      
+      serviceAccountName: openhouse-minio
+      automountServiceAccountToken: false
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: openhouse-minio
+                    app.kubernetes.io/name: minio
+                    app.kubernetes.io/component: console
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      containers:
+        - name: console
+          image: hub.vtcc.vn:8989/bitnami/minio-object-browser:2.0.2-debian-12-r3
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: {}
+            seccompProfile:
+              type: RuntimeDefault
+          args:
+            - server
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "9090"
+          env:
+            - name: CONSOLE_MINIO_SERVER
+              value: "http://openhouse-minio:9000"
+          resources:
+            limits:
+              memory: 5Gi
+            requests:
+              memory: 512Mi
+          ports:
+            - name: http
+              containerPort: 9090
+          livenessProbe:
+            failureThreshold: 5
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+            tcpSocket:
+              port: http
+          readinessProbe:
+            failureThreshold: 5
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+            httpGet:
+              path: /minio
+              port: http
+          volumeMounts:
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
+            - name: empty-dir
+              mountPath: /.console
+              subPath: app-console-dir
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
+---
+# Source: minio/templates/application.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openhouse-minio
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: openhouse-minio
+      app.kubernetes.io/name: minio
+      app.kubernetes.io/component: minio
+      app.kubernetes.io/part-of: minio
+  podManagementPolicy: Parallel
+  replicas: 4
+  serviceName: openhouse-minio-headless
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: openhouse-minio
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: minio
+        app.kubernetes.io/version: 2025.7.23
+        helm.sh/chart: minio-17.0.22
+        app.kubernetes.io/component: minio
+        app.kubernetes.io/part-of: minio
+      annotations:
+        checksum/credentials-secret: 3ee76a4000a232d96cd7ea71d04184f448689adb0c478382d961c8912ec90eb6
+    spec:
+      
+      serviceAccountName: openhouse-minio
+      affinity:
+        podAffinity:
+          
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/instance: openhouse-minio
+                    app.kubernetes.io/name: minio
+                    app.kubernetes.io/component: minio
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+        nodeAffinity:
+          
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1001
+        fsGroupChangePolicy: OnRootMismatch
+        supplementalGroups: []
+        sysctls: []
+      initContainers:
+      containers:
+        - name: minio
+          image: hub.vtcc.vn:8989/bitnami/minio:2025.7.23-debian-12-r3
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            privileged: false
+            readOnlyRootFilesystem: true
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+            seLinuxOptions: {}
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: MINIO_DISTRIBUTED_MODE_ENABLED
+              value: "yes"
+            - name: MINIO_DISTRIBUTED_NODES
+              value: "openhouse-minio-{0...3}.openhouse-minio-headless.dmp-demo.svc.cluster.local:9000/bitnami/minio/data"
+            - name: MINIO_SCHEME
+              value: "http"
+            - name: MINIO_FORCE_NEW_KEYS
+              value: "no"
+            - name: MINIO_ROOT_USER_FILE
+              value: /opt/bitnami/minio/secrets/root-user
+            - name: MINIO_ROOT_PASSWORD_FILE
+              value: /opt/bitnami/minio/secrets/root-password
+            - name: MINIO_SKIP_CLIENT
+              value: "yes"
+            - name: MINIO_API_PORT_NUMBER
+              value: "9000"
+            - name: MINIO_BROWSER
+              value: "off"
+            - name: MINIO_PROMETHEUS_AUTH_TYPE
+              value: "public"
+            - name: MINIO_DATA_DIR
+              value: "/bitnami/minio/data"
+          ports:
+            - name: api
+              containerPort: 9000
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+              scheme: "HTTP"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            tcpSocket:
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 1
+            successThreshold: 1
+            failureThreshold: 5
+          resources:
+            limits:
+              memory: 5Gi
+            requests:
+              memory: 512Mi
+          volumeMounts:
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
+            - name: empty-dir
+              mountPath: /opt/bitnami/minio/tmp
+              subPath: app-tmp-dir
+            - name: empty-dir
+              mountPath: /.mc
+              subPath: app-mc-dir
+            - name: minio-credentials
+              mountPath: /opt/bitnami/minio/secrets/
+            - name: data
+              mountPath: /bitnami/minio/data
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
+        - name: minio-credentials
+          secret:
+            secretName: openhouse-minio
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/instance: openhouse-minio
+          app.kubernetes.io/name: minio
+      spec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: "200Gi"
+        storageClassName: stag-dmp-rbd
+---
+# Source: minio/templates/console/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openhouse-minio-console
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2.0.2
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: console
+    app.kubernetes.io/part-of: minio
+spec:
+  ingressClassName: "nginx"
+  rules:
+    - host: openhouse.minio.console.dev
+      http:
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: openhouse-minio-console
+                port:
+                  name: http
+---
+# Source: minio/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openhouse-minio
+  namespace: "dmp-demo"
+  labels:
+    app.kubernetes.io/instance: openhouse-minio
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/version: 2025.7.23
+    helm.sh/chart: minio-17.0.22
+    app.kubernetes.io/component: minio
+    app.kubernetes.io/part-of: minio
+spec:
+  ingressClassName: "nginx"
+  rules:
+    - host: openhouse.minio.dev
+      http:
+        paths:
+          - path: /
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: openhouse-minio
+                port:
+                  name: tcp-api

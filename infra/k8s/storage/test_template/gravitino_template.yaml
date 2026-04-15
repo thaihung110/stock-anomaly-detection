@@ -1,0 +1,374 @@
+---
+# Source: gravitino/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openhouse-gravitino
+  namespace: default
+  labels:
+    app: gravitino
+    chart: gravitino-1.1.17
+    release: openhouse-gravitino
+data:
+  init.sh: |-
+    cp /tmp/conf/* ${GRAVITINO_HOME}/conf
+    echo "Start the Gravitino Server"
+    /bin/bash ${GRAVITINO_HOME}/bin/gravitino.sh run
+
+  gravitino.conf: |
+    #
+    # Licensed to the Apache Software Foundation (ASF) under one
+    # or more contributor license agreements.  See the NOTICE file
+    # distributed with this work for additional information
+    # regarding copyright ownership.  The ASF licenses this file
+    # to you under the Apache License, Version 2.0 (the
+    # "License"); you may not use this file except in compliance
+    # with the License.  You may obtain a copy of the License at
+    #
+    #  http://www.apache.org/licenses/LICENSE-2.0
+    #
+    # Unless required by applicable law or agreed to in writing,
+    # software distributed under the License is distributed on an
+    # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    # KIND, either express or implied.  See the License for the
+    # specific language governing permissions and limitations
+    # under the License.
+    #
+
+    # THE CONFIGURATION FOR Gravitino SERVER
+    gravitino.server.shutdown.timeout = 3000
+
+    # THE CONFIGURATION FOR Gravitino WEB SERVER
+    gravitino.server.webserver.host = 0.0.0.0
+    gravitino.server.webserver.httpPort = 8090
+    gravitino.server.webserver.minThreads = 24
+    gravitino.server.webserver.maxThreads = 200
+    gravitino.server.webserver.stopTimeout = 30000
+    gravitino.server.webserver.idleTimeout = 30000
+    gravitino.server.webserver.threadPoolWorkQueueSize = 100
+    gravitino.server.webserver.requestHeaderSize = 131072
+    gravitino.server.webserver.responseHeaderSize = 131072
+
+    # Comma-separated list of filter class names to apply to the API.
+    gravitino.server.webserver.customFilters = 
+
+    # Comma-separated list of REST API packages to expand
+    gravitino.server.rest.extensionPackages = 
+
+    # THE CONFIGURATION FOR Gravitino ENTITY STORE
+    gravitino.entity.store = relational
+    gravitino.entity.store.maxTransactionSkewTimeMs = 2000
+    gravitino.entity.store.deleteAfterTimeMs = 604800000
+    gravitino.entity.store.versionRetentionCount = 1
+    gravitino.entity.store.relational = JDBCBackend
+    gravitino.entity.store.relational.jdbcUrl = jdbc:postgresql://openhouse-postgresql-primary:5432/gravitino_db
+    gravitino.entity.store.relational.jdbcDriver = org.postgresql.Driver
+    gravitino.entity.store.relational.jdbcUser = gravitino
+    gravitino.entity.store.relational.jdbcPassword = gravitino
+    gravitino.entity.store.relational.storagePath = /root/gravitino/data/jdbc
+
+    # THE CONFIGURATION FOR Gravitino CATALOG
+    gravitino.catalog.cache.evictionIntervalMs = 3600000
+
+    # THE CONFIGURATION FOR Gravitino Entity Cache
+    gravitino.cache.enabled = true
+    gravitino.cache.maxEntries = 10000
+    gravitino.cache.expireTimeInMs = 3600000
+    gravitino.cache.enableStats = false
+    gravitino.cache.enableWeigher = true
+    gravitino.cache.implementation = caffeine
+
+    # THE CONFIGURATION FOR authorization
+    gravitino.authorization.enable = false
+    gravitino.authorization.serviceAdmins = anonymous
+    gravitino.authenticators = oauth
+    gravitino.authenticator.oauth.serviceAudience = gravitino
+    gravitino.authenticator.oauth.defaultSignKey = 
+    gravitino.authenticator.oauth.serverUri = http://openhouse-keycloak
+    gravitino.authenticator.oauth.tokenPath = /realms/iceberg/protocol/openid-connect/token
+
+    gravitino.authenticator.oauth.provider = oidc
+    gravitino.authenticator.oauth.clientId = gravitino
+    gravitino.authenticator.oauth.authority = http://openhouse-keycloak/realms/iceberg
+    gravitino.authenticator.oauth.scope = gravitino
+    gravitino.authenticator.oauth.jwksUri = http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/certs
+    gravitino.authenticator.oauth.tokenValidatorClass = org.apache.gravitino.server.authentication.JwksTokenValidator
+    gravitino.authenticator.oauth.principalFields = preferred_username,email,sub
+
+    # THE CONFIGURATION FOR AUXILIARY SERVICE
+    gravitino.auxService.names = iceberg-rest
+    gravitino.iceberg-rest.classpath = iceberg-rest-server/libs, iceberg-rest-server/conf
+    gravitino.iceberg-rest.host = 0.0.0.0
+    gravitino.iceberg-rest.httpPort = 9001
+    gravitino.iceberg-rest.catalog-backend = memory
+    gravitino.iceberg-rest.warehouse = /tmp/
+    gravitino.iceberg-rest.catalog-config-provider = dynamic-config-provider
+    gravitino.iceberg-rest.gravitino-uri = http://localhost:8090
+    gravitino.iceberg-rest.gravitino-metalake = my-metalake
+    gravitino.iceberg-rest.default-catalog-name = default-warehouse
+
+    # Audit log configuration
+    gravitino.audit.enabled = false
+    gravitino.audit.writer.className = org.apache.gravitino.audit.FileAuditWriter
+    gravitino.audit.formatter.className = org.apache.gravitino.audit.SimpleFormatter
+    gravitino.audit.writer.file.fileName = gravitino_audit.log
+    gravitino.audit.writer.file.flushIntervalSecs = 10
+    gravitino.audit.writer.file.append = true
+
+    # Metrics configuration
+    gravitino.metrics.timeSlidingWindowSecs	= 60
+  log4j2.properties: |-
+    #
+    # Licensed to the Apache Software Foundation (ASF) under one
+    # or more contributor license agreements.  See the NOTICE file
+    # distributed with this work for additional information
+    # regarding copyright ownership.  The ASF licenses this file
+    # to you under the Apache License, Version 2.0 (the
+    # "License"); you may not use this file except in compliance
+    # with the License.  You may obtain a copy of the License at
+    #
+    #  http://www.apache.org/licenses/LICENSE-2.0
+    #
+    # Unless required by applicable law or agreed to in writing,
+    # software distributed under the License is distributed on an
+    # "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    # KIND, either express or implied.  See the License for the
+    # specific language governing permissions and limitations
+    # under the License.
+    #
+
+    status = warn
+
+    # Log files location
+    property.basePath = ${sys:gravitino.log.path}
+    property.serverName = ${sys:gravitino.server.name}
+
+    # RollingFileAppender name, pattern, path and rollover policy
+    appender.rolling.type = RollingFile
+    appender.rolling.name = fileLogger
+    appender.rolling.fileName = ${basePath}/${serverName}.log
+    appender.rolling.filePattern = ${basePath}/${serverName}_%d{yyyyMMdd}.log.gz
+    appender.rolling.layout.type = PatternLayout
+    appender.rolling.layout.pattern = %d{yyyy-MM-dd HH:mm:ss.SSS} %level [%t] [%l] - %msg%n
+    appender.rolling.policies.type = Policies
+
+    # RollingFileAppender rotation policy
+    appender.rolling.policies.size.type = SizeBasedTriggeringPolicy
+    appender.rolling.policies.size.size = 10MB
+    appender.rolling.policies.time.type = TimeBasedTriggeringPolicy
+    appender.rolling.policies.time.interval = 1
+    appender.rolling.policies.time.modulate = true
+    appender.rolling.strategy.type = DefaultRolloverStrategy
+    appender.rolling.strategy.delete.type = Delete
+    appender.rolling.strategy.delete.basePath = ${basePath}
+    appender.rolling.strategy.delete.maxDepth = 10
+    appender.rolling.strategy.delete.ifLastModified.type = IfLastModified
+
+    # Delete all files older than 30 days
+    appender.rolling.strategy.delete.ifLastModified.age = 30d
+
+    # Configure root logger
+    rootLogger.level = info
+    rootLogger.appenderRef.rolling.ref = fileLogger
+    appender.console.layout.pattern = %d{yyyy-MM-dd HH:mm:ss} %-5p [%t] %c{1}:%L - %m%n
+    appender.console.layout.type = PatternLayout
+    appender.console.name = consoleLogger
+    appender.console.type = Console
+    rootLogger.appenderRef.console.ref = consoleLogger
+---
+# Source: gravitino/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: gravitino
+  namespace: default
+  labels:
+    app: gravitino
+    chart: gravitino-1.1.17
+    release: openhouse-gravitino
+  annotations: {}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8090
+      protocol: TCP
+      targetPort: 8090
+    - name: http1
+      port: 9001
+      protocol: TCP
+      targetPort: 9001
+  selector:
+    app: gravitino
+    release: openhouse-gravitino
+---
+# Source: gravitino/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhouse-gravitino
+  namespace: default
+  labels:
+    app: gravitino
+    chart: gravitino-1.1.17
+    release: openhouse-gravitino
+  annotations: {}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gravitino
+      release: openhouse-gravitino
+  template:
+    metadata:
+      labels:
+        app: gravitino
+        name: openhouse-gravitino
+        release: openhouse-gravitino
+      annotations:
+        checksum/config: a37c1147cd3548a9896552b49e8782a43a108d7cbfa0d0eaa30dcec81eed4d82
+    spec:
+      initContainers:
+        - name: sqlfile
+          image: docker.io/apache/gravitino:1.1.0
+          imagePullPolicy: "IfNotPresent"
+          command:
+            - /bin/bash
+            - -c
+            - |
+              cp -r /root/gravitino/scripts/*  /tmp/scripts/
+              VERSION=$(ls /root/gravitino/libs/gravitino-server-* | grep -oP '[0-9]+\.[0-9]+\.[0-9]+'|head -1)
+              echo $VERSION > /tmp/scripts/version.txt
+          resources: {}
+          volumeMounts:
+            - mountPath: /tmp/scripts/
+              name: scripts-emptydir
+      containers:
+        - name: gravitino
+          image: docker.io/apache/gravitino:1.1.0
+          imagePullPolicy: "IfNotPresent"
+          command:
+            - "/bin/bash"
+            - "/tmp/conf/init.sh"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            timeoutSeconds: 5
+          resources: {}
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+          env:
+            - name: GRAVITINO_HOME
+              value: /root/gravitino
+            - name: GRAVITINO_MEM
+              value: -Xms1024m -Xmx1024m -XX:MaxMetaspaceSize=512m
+          ports:
+            - name: http
+              containerPort: 8090
+              protocol: TCP
+            - name: http1
+              containerPort: 9001
+              protocol: TCP
+          volumeMounts:
+            - name: gravitino-conf
+              mountPath: /tmp/conf
+            - name: storage
+              mountPath: /root/gravitino/data/jdbc
+            - mountPath: /root/gravitino/logs
+              name: gravitino-log
+      nodeSelector: {}
+      affinity: {}
+      tolerations: []
+      volumes:
+        - name: gravitino-conf
+          configMap:
+            name: openhouse-gravitino
+        - emptyDir: {}
+          name: scripts-emptydir
+        - name: storage
+          emptyDir: {}
+        - emptyDir: {}
+          name: gravitino-log
+---
+# Source: gravitino/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openhouse-gravitino
+  labels:
+    app: gravitino
+    chart: gravitino-1.1.17
+    release: openhouse-gravitino
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "openhouse.gravitino.test"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: openhouse-gravitino
+                port:
+                  number: 8090
+---
+# Source: gravitino/templates/tests/test-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: openhouse-gravitino-test-connection
+  namespace: default
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: hook-succeeded
+spec:
+  containers:
+    - name: test-connection
+      image: curlimages/curl:latest
+      command:
+        - /bin/sh
+        - -c
+        - |
+          max_attempts=10
+          attempt=0
+          success=false
+
+          while [ $attempt -lt $max_attempts ]; do
+            response=$(curl -X GET -H "Content-Type: application/json" http://${SERVICE_NAME}:${SERVICE_PORT}/api/version)
+
+            if echo "$response" | grep -q "\"code\":0"; then
+              success=true
+              break
+            else
+              echo "Attempt $((attempt + 1)) failed..."
+              sleep 1
+            fi
+
+            ((attempt++))
+          done
+
+          if [ "$success" = true ]; then
+            exit 0
+          else
+            exit 1
+          fi
+      env:
+        - name: SERVICE_NAME
+          value: "gravitino"
+        - name: SERVICE_PORT
+          value: "8090"
+  restartPolicy: Never

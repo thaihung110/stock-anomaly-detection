@@ -1,0 +1,926 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+global:
+  # Set if you want to change the default docker registry, e.g. a private one.
+  #  imageRegistry: myRegistryName
+
+  ## Optionally specify an array of pullSecrets (secrets must be manually created in the namespace)
+  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+  ## Example:
+  ## imagePullSecrets:
+  ##   - name: my-registry-secret
+  ##
+  imagePullSecrets: []
+
+image:
+  registry: docker.io
+  repository: apache/gravitino
+  tag: 1.1.0
+  pullPolicy: IfNotPresent
+
+## MySQL chart configuration
+## ref: https://github.com/bitnami/charts/blob/main/bitnami/mysql/values.yaml
+##
+mysql:
+  ## @param mysql.enabled Deploy MySQL container(s)
+  ##
+  enabled: false
+  ## Bitnami MySQL image version
+  ## ref: https://hub.docker.com/r/bitnami/mysql/tags/
+  ## @param image.registry MySQL image registry
+  ## @param image.repository MySQL image repository
+  ## @param image.tag MySQL image tag
+  ##
+  image:
+    repository: bitnamilegacy/mysql
+    tag: 8.0.36-debian-12-r12
+  ## MySQL Authentication parameters
+  ##
+  auth:
+    ## @param auth.rootPassword Password for the `root` user.
+    ##
+    rootPassword: admin
+    ## @param auth.createDatabase Whether to create the .Values.auth.database or not
+    ##
+    createDatabase: true
+    ## @param auth.database Name for a custom database to create
+    ##
+    database: gravitino
+    ## @param auth.username Name for a custom user to create
+    ##
+    username: gravitino
+    ## @param auth.password Password for the new user.
+    ##
+    password: gravitino
+
+## PostgreSQL chart configuration
+## ref: https://github.com/bitnami/charts/blob/master/bitnami/postgresql/values.yaml
+##
+postgresql:
+  ## @param postgresql.enabled Deploy PostgreSQL container(s)
+  ##
+  enabled: false
+  ## Bitnami PostgreSQL image version
+  ## ref: https://hub.docker.com/r/bitnami/postgresql/tags/
+  ## @param image.registry PostgreSQL image registry
+  ## @param image.repository PostgreSQL image repository
+  ## @param image.tag PostgreSQL image tag (immutable tags are recommended)
+  ##
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 16.3.0-debian-12-r10
+  auth:
+    ## @param auth.username Name for a custom user to create
+    ##
+    username: gravitino
+    ## @param auth.password Password for the custom user to create
+    ##
+    password: gravitino
+    ## @param auth.database Name for a custom database to create
+    ##
+    database: gravitino
+    ## @param auth.existingSecret Name of existing secret to use for PostgreSQL credentials
+    ## `auth.postgresPassword`, `auth.password`, and `auth.replicationPassword` will be ignored and picked up from this secret
+    ## The secret must contain the keys `postgres-password` (which is the password for "postgres" admin user),
+    ## `password` (which is the password for the custom user to create when `auth.username` is set),
+    ## and `replication-password` (which is the password for replication user).
+    ## The secret might also contains the key `ldap-password` if LDAP is enabled. `ldap.bind_password` will be ignored and
+    ## picked from this secret in this case.
+    ## The value is evaluated as a template.
+    ##
+    existingSecret: ""
+
+## THE CONFIGURATION FOR Gravitino ENTITY STORE
+## Dùng PostgreSQL external làm persistent backend lưu metadata của Gravitino
+## (metalake, catalog definitions, schema, users...)
+## NOTE: Đây là DB của Gravitino server, KHÁC với DB của Iceberg table metadata.
+##
+entity:
+  ## The entity store to use, we only supports relational
+  ##
+  store: relational
+  maxTransactionSkewTimeMs: 2000
+  deleteAfterTimeMs: 604800000
+  versionRetentionCount: 1
+  ## The backend for the entity store, we only supports JDBC
+  ##
+  relationalBackend: JDBCBackend
+  ## The JDBC URL for the entity store (PostgreSQL external)
+  ##
+  jdbcUrl: jdbc:postgresql://openhouse-postgresql-primary:5432/gravitino_db
+  ## The JDBC driver class name
+  ##
+  jdbcDriver: org.postgresql.Driver
+  ## The JDBC user name
+  ##
+  jdbcUser: gravitino
+  ## The JDBC password
+  ## KHUYẾN NGHỊ: Dùng envFrom + Kubernetes Secret thay vì plain text
+  ##
+  jdbcPassword: gravitino
+  ## storagePath chỉ dùng với H2, với PostgreSQL vẫn cần set nhưng không có tác dụng
+  ##
+  storagePath: /root/gravitino/data/jdbc
+
+## THE CONFIGURATION FOR Gravitino SERVER
+##
+server:
+  shutdownTimeout: 3000
+  rest:
+    extensionPackages: ""
+## THE CONFIGURATION FOR Gravitino WEB SERVER
+##
+webserver:
+  ## The host name of the built-in web server
+  ##
+  host: 0.0.0.0
+  ## The http port number of the built-in web server
+  ##
+  httpPort: 8090
+  ## The min thread size of the built-in web server
+  ##
+  minThreads: 24
+  ## The max thread size of the built-in web server
+  ##
+  maxThreads: 200
+  ## The stop timeout of the built-in web server
+  ##
+  stopTimeout: 30000
+  ## The timeout of idle connections
+  ##
+  idleTimeout: 30000
+  ## The executor thread pool work queue size of the built-in web server
+  ##
+  threadPoolWorkQueueSize: 100
+  ## The request header size of the built-in web server
+  ##
+  requestHeaderSize: 131072
+  ## The response header size of the built-in web server
+  ##
+  responseHeaderSize: 131072
+  customFilters: ""
+
+## THE CONFIGURATION FOR Gravitino CATALOG
+##
+catalog:
+  ## The interval in milliseconds to evict the catalog cache
+  ##
+  cacheEvictionIntervalMs: 3600000
+
+## THE CONFIGURATION FOR Gravitino ENTITY CACHE
+##
+cache:
+  ## Enable/disable the entity cache
+  ##
+  enabled: true
+  ## Max number of cache entries
+  ##
+  maxEntries: 10000
+  ## TTL for cache entries in ms
+  ##
+  expireTimeInMs: 3600000
+  ## Enable cache hit/miss stats logging
+  ##
+  enableStats: false
+  ## Use weight-based eviction
+  ##
+  enableWeigher: true
+  ## Cache backend implementation
+  ##
+  implementation: caffeine
+
+## THE CONFIGURATION FOR authorization
+##
+authorization:
+  ## Whether Gravitino enable authorization or not
+  ##
+  enable: false
+  ## The admins of Gravitino service, multiple admins are spitted by comma.
+  ##
+  serviceAdmins: anonymous
+
+## THE CONFIGURATION FOR AUXILIARY SERVICE
+##
+auxService:
+  ## Auxiliary service names, separate by ','
+  ##
+  names: iceberg-rest
+
+## ============================================================
+## ICEBERG REST AUXILIARY SERVICE — DYNAMIC CATALOG MODE
+## ============================================================
+## Trong chế độ này, Iceberg REST Service (:9001) đọc catalog
+## config từ Gravitino server (:8090) thay vì static values.
+##
+## Mỗi "warehouse" = một Iceberg Catalog trong Gravitino.
+## Tạo/xóa warehouse KHÔNG cần restart hay helm upgrade.
+##
+## Cách tạo warehouse mới sau khi deploy:
+##
+##   1. Tạo Metalake (1 lần duy nhất):
+##      POST http://gravitino:8090/api/metalakes
+##      Body: { "name": "my-metalake", "comment": "", "properties": {} }
+##
+##   2. Tạo Catalog (= warehouse, làm nhiều lần, mỗi lần là 1 warehouse khác):
+##      POST http://gravitino:8090/api/metalakes/my-metalake/catalogs
+##      Body:
+##      {
+##        "name": "warehouse-s3-bucket1",
+##        "type": "RELATIONAL",
+##        "provider": "lakehouse-iceberg",
+##        "comment": "Warehouse on bucket-1",
+##        "properties": {
+##          "catalog-backend": "jdbc",
+##          "uri": "jdbc:postgresql://YOUR_POSTGRES_HOST:5432/iceberg_catalog_db",
+##          "jdbc-user": "iceberg",
+##          "jdbc-password": "iceberg_secret",
+##          "jdbc-driver": "org.postgresql.Driver",
+##          "jdbc-initialize": "true",
+##          "warehouse": "s3://your-bucket/warehouse",
+##          "io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+##          "s3-access-key-id": "your-access-key",
+##          "s3-secret-access-key": "your-secret-key",
+##          "s3-endpoint": "http://minio:9000",
+##          "s3-path-style-access": "true",
+##          "s3-region": "us-east-1"
+##        }
+##      }
+##
+##   3. Client (Spark) connect qua:
+##      spark.sql.catalog.my_catalog.uri = http://gravitino:9001
+##      Namespace prefix: my-metalake.warehouse-s3-bucket1.schema_name.table_name
+## ============================================================
+icebergRest:
+  ## Iceberg REST service classpath
+  ##
+  ## /aws-ext-libs: thêm vào để Iceberg REST service (classloader riêng) load được
+  ## gravitino-iceberg-aws-bundle JAR (S3FileIO + AWS SDK v2)
+  classpath: "iceberg-rest-server/libs, iceberg-rest-server/conf, /aws-ext-libs"
+  ## Iceberg REST service host
+  ##
+  host: 0.0.0.0
+  ## Iceberg REST service http port
+  ##
+  httpPort: 9001
+
+  ## ── DYNAMIC CATALOG PROVIDER ──────────────────────────────
+  ## Iceberg REST service (port 9001) đọc catalog config từ
+  ## Gravitino API (port 8090, self-reference cùng pod).
+  ## → Catalog tạo qua Gravitino UI/API sẽ tự expose qua Iceberg REST spec.
+  ## → Spark/Trino truyền "warehouse=<catalog-name>" để chỉ định catalog.
+  ##
+  catalogConfigProvider: "dynamic-config-provider"
+  dynamicConfigProvider:
+    ## Self-reference đến Gravitino API server trong cùng pod
+    uri: "http://localhost:8090"
+    ## Metalake thực tế đang tồn tại trong Gravitino
+    ## (xem tại: https://openhouse.gravitino.test/ui)
+    metalake: "Default_metalake"
+    ## defaultCatalogName: bỏ — Spark tự truyền warehouse=<catalog-name> trong config
+    ## VD: spark.sql.catalog.bronze.warehouse = "bronze"
+
+  ## ── STATIC MODE (disabled — chỉ bật 1 trong 2) ───────────
+  ## Uncomment block dưới và comment block dynamicConfigProvider
+  ## ở trên nếu muốn dùng 1 warehouse cố định.
+  ##
+  # catalogBackend: jdbc
+  # uri: jdbc:postgresql://YOUR_POSTGRES_HOST:5432/iceberg_catalog_db
+  # jdbc:
+  #   user: "iceberg"
+  #   password: "iceberg_secret"
+  #   driver: "org.postgresql.Driver"
+  #   initialize: true
+  #   schemaVersion: "V1"
+  # warehouse: s3://your-bucket/warehouse
+  # ioImpl: "org.apache.iceberg.aws.s3.S3FileIO"
+  # s3:
+  #   accessKeyId: "your-access-key"
+  #   secretAccessKey: "your-secret-key"
+  #   endpoint: "http://minio:9000"
+  #   region: "us-east-1"
+  #   pathStyleAccess: true
+
+## ============================================================
+## AUTHENTICATION — Keycloak OAuth2 (realm: iceberg)
+## ============================================================
+## Gravitino 1.1.0 hỗ trợ 2 approach validate JWT:
+##
+## [1] Static Key (cũ) — có trong docs Keycloak example:
+##     Cần: serverUri + tokenPath + defaultSignKey (lấy từ Keycloak realm public key)
+##     Hạn chế: key rotation sẽ fail
+##
+## [2] JWKS Validation (khuyến cáo) — xém Azure AD example:
+##     Cần: provider=oidc + clientId + authority + jwksUri + tokenValidatorClass
+##     K0 cần: serverUri, tokenPath, defaultSignKey
+##     Ưu điểm: tự động fetch public key mới đừ khi Keycloak rotate key
+##
+## Cấu hình hiện tại dùng APPROACH [2] - JWKS Validation với Keycloak:
+##   Client "gravitino" (public — không có client_secret)
+##   Scope "gravitino" có Audience Mapper: aud = gravitino ✔
+## ============================================================
+authenticators: oauth
+
+authenticator:
+  oauth:
+    ## ──────────────────────────────────────────────────────
+    ## Audience — phải khớp "aud" claim trong JWT
+    ## = tên client scope Audience Mapper đã set trong Keycloak
+    ## ──────────────────────────────────────────────────────
+    serviceAudience: gravitino
+
+    ## ── JWKS Validation fields (required) ───────────────────────
+    ## provider = oidc: báo Gravitino dùng OIDC discovery để tìm JWKS endpoint
+    ##
+    provider: oidc
+
+    ## clientId: client ID đã tạo trong Keycloak
+    ## Dùng cho Authorization Code flow của Web UI (browser-side)
+    ##
+    clientId: gravitino
+
+    ## authority: Keycloak realm issuer URL dùng cho BROWSER
+    ## ──────────────────────────────────────────────────────
+    ## Gravitino Web UI (chạy trong browser) sẽ fetch:
+    ##   {authority}/.well-known/openid-configuration
+    ## Browser không resolve được internal k8s DNS (openhouse-keycloak)
+    ## Browser đang dùng HTTPS nên URL phải là HTTPS (Mixed Content policy)
+    ## → Dùng external ingress URL của Keycloak
+    ## ──────────────────────────────────────────────────────
+    authority: "https://openhouse.keycloak.test/realms/iceberg"
+
+    ## scope: scopes request khi Web UI redirect sang Keycloak
+    ## openid: bắt buộc cho Authorization Code flow
+    ## gravitino: custom scope chứa audience mapper
+    ##
+    scope: "openid gravitino"
+
+    ## jwksUri: URL Gravitino SERVER dùng để fetch public keys và verify JWT
+    ## ──────────────────────────────────────────────────────
+    ## Server-side: chạy trong pod, resolve đư⤃c internal k8s DNS
+    ## Không bị Mixed Content (server không phải browser)
+    ## → Dùng internal service URL (nhanh hơn, không qua ingress)
+    ## ──────────────────────────────────────────────────────
+    jwksUri: "http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/certs"
+
+    ## tokenValidatorClass: sử dụng JwksTokenValidator để validate qua JWKS
+    ##
+    tokenValidatorClass: org.apache.gravitino.server.authentication.JwksTokenValidator
+
+    ## principalFields: các JWT claims dùng để xác định user identity
+    ## preferred_username: Keycloak username
+    ## email: email của user
+    ## sub: Keycloak user UUID (fallback)
+    ##
+    principalFields: "preferred_username,email,sub"
+
+    ## ── Fields không cần khi dùng JWKS (bỏ trống) ──────────────────
+    ## defaultSignKey, serverUri, tokenPath: legacy static key mode
+    ##
+    defaultSignKey: ""
+    serverUri: "http://openhouse-keycloak"
+    tokenPath: /realms/iceberg/protocol/openid-connect/token
+
+## Audit log configuration
+##
+audit:
+  enabled: false
+  writer:
+    file:
+      fileName: gravitino_audit.log
+      flushIntervalSecs: 10
+      append: true
+
+## Metrics configuration
+##
+metrics:
+  timeSlidingWindowSecs: 60
+
+## Custom Gravitino configuration items
+##
+visibleConfigs: ""
+# visibleConfigs: "gravitino.datastrato.custom.authorization.ranger.admin.url,gravitino.datastrato.custom.authorization.ranger.username,gravitino.datastrato.custom.authorization.ranger.password,gravitino.datastrato.custom.authorization.ranger.auth.type"
+
+visibleConfigsItems: {}
+  # gravitino.datastrato.custom.authorization.ranger.admin.url: "http://ranger:6080"
+  # gravitino.datastrato.custom.authorization.ranger.username: admin
+  # gravitino.datastrato.custom.authorization.ranger.password: "rangerR0cks!"
+  # gravitino.datastrato.custom.authorization.ranger.auth.type: simple
+
+## Additional Gravitino configuration items in gravitino.conf can be added
+##
+additionalConfigItems:
+  ## ══════════════════════════════════════════════════════════════════
+  ## Iceberg REST → Gravitino API authentication (QUAN TRỌNG!)
+  ## ══════════════════════════════════════════════════════════════════
+  ## Khi Iceberg REST service (port 9001) gọi Gravitino API (port 8090)
+  ## qua dynamicConfigProvider, nó phải authenticate.
+  ## Không có config này → Gravitino :8090 trả về 401 (empty body)
+  ## → ServiceFailureException: "No content to map due to end-of-input"
+  ##
+  ## Tham chiếu từ working config:
+  ##   gravitino.iceberg-rest.gravitino-auth-type = oauth2
+  ##   gravitino.iceberg-rest.gravitino-oauth2.credential = client:secret
+  ## ══════════════════════════════════════════════════════════════════
+  gravitino.iceberg-rest.gravitino-auth-type: "oauth2"
+  gravitino.iceberg-rest.gravitino-oauth2.server-uri: "http://openhouse-keycloak"
+  gravitino.iceberg-rest.gravitino-oauth2.credential: "spark:YeG2U2zPQqnLoIfD3Bc3c55pfIUnDNFd"
+  gravitino.iceberg-rest.gravitino-oauth2.token-path: "realms/iceberg/protocol/openid-connect/token"
+  gravitino.iceberg-rest.gravitino-oauth2.scope: "gravitino"
+
+  ## ══════════════════════════════════════════════════════════════════
+  ## Additional trusted issuers
+  ## ══════════════════════════════════════════════════════════════════
+  ## authorities: list tất cả issuer URLs được trust (cả internal HTTP
+  ## và external HTTPS). Token từ Spark có iss = external HTTPS URL.
+  ## Tham chiếu từ working config:
+  ##   gravitino.authenticator.oauth.authorities = internal,external
+  ## ══════════════════════════════════════════════════════════════════
+  gravitino.authenticator.oauth.authorities: "http://openhouse-keycloak/realms/iceberg,https://openhouse.keycloak.test/realms/iceberg"
+
+  ## ══════════════════════════════════════════════════════════════════
+  ## Credential Vending cho MinIO (s3-secret-key) — Bước 1
+  ## ══════════════════════════════════════════════════════════════════
+  ## Khai báo loại credential provider cho Iceberg REST server (global).
+  ## Khi Spark gửi header X-Iceberg-Access-Delegation: vended-credentials,
+  ## Gravitino sẽ đọc s3-access-key-id / s3-secret-access-key
+  ## từ catalog properties (trong Gravitino DB) rồi trả về cho Spark.
+  ## Credentials cụ thể của từng catalog cần được set riêng qua API
+  ## (xem Bước 2 trong docs/gravitino-credential-vending-minio.md).
+  ## ══════════════════════════════════════════════════════════════════
+  # gravitino.iceberg-rest.credential-providers: "s3-secret-key"
+
+## Additional volumes
+##
+extraVolumes:
+  - name: gravitino-log
+    emptyDir: {}
+  ## aws-libs: shared volume để download AWS bundle JAR từ initContainer
+  ## Mount vào /aws-ext-libs để tránh conflict với lib dir có sẵn
+  - name: aws-libs
+    emptyDir: {}
+  ## truststore: shared volume chứa custom JKS truststore
+  ## initContainer sẽ import Keycloak CA cert vào đây
+  - name: truststore
+    emptyDir: {}
+  ## keycloak-ca-cert: Secret chứa CA cert của Keycloak (self-signed)
+  ## Tạo bằng: ./scripts/create_secret_gravitino_tls.sh
+  - name: keycloak-ca-cert
+    secret:
+      secretName: keycloak-ca-cert
+
+## Additional volume mounts
+##
+extraVolumeMounts:
+  - name: gravitino-log
+    mountPath: /root/gravitino/logs
+  ## Mount volume aws-libs vào /aws-ext-libs trong main container
+  ## InitContainer đã copy JAR vào /aws-libs (tức là volume aws-libs)
+  ## Main container thấy JAR tại /aws-ext-libs/gravitino-iceberg-aws-bundle-1.1.0.jar
+  ## Gravitino startup script sẽ thêm /aws-ext-libs/* vào classpath qua GRAVITINO_AUX_CLASSPATH
+  - name: aws-libs
+    mountPath: /aws-ext-libs
+  ## Mount custom truststore (được tạo bởi initContainer import-keycloak-cert)
+  - name: truststore
+    mountPath: /opt/gravitino-truststore
+
+## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+## If you set enabled as "True", you need :
+## - create a pv which above 10Gi
+## - keep storageClassName same with below setting
+##
+persistence:
+  enabled: false
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+  labels: {}
+  annotations: {}
+  # existingClaim:
+  storageClassName: standard-rwo
+
+## Gravitino log4j2 configuration items in log4j2.properties can be customized
+##
+log4j2Properties: {}
+  # status: warn
+
+  ## Log files location
+  # basePath: "${sys:gravitino.log.path}"
+  # serverName: "${sys:gravitino.server.name}"
+
+  ## RollingFileAppender name, pattern, path and rollover policy
+  # rollingAppenderType: RollingFile
+  # rollingAppenderName: fileLogger
+  # rollingAppenderFileName: "${basePath}/${serverName}.log"
+  # rollingAppenderFilePattern: "${basePath}/${serverName}_%d{yyyyMMdd}.log.gz"
+  # rollingAppenderLayoutType: PatternLayout
+  # rollingAppenderLayoutPattern: "%d{yyyy-MM-dd HH:mm:ss.SSS} %level [%t] [%l] - %msg%n"
+  # rollingAppenderPoliciesType: Policies
+
+  ## RollingFileAppender rotation policy
+  # rollingAppenderPoliciesSizeType: SizeBasedTriggeringPolicy
+  # rollingAppenderPoliciesSizeSize: 10MB
+  # rollingAppenderPoliciesTimeType: TimeBasedTriggeringPolicy
+  # rollingAppenderPoliciesTimeInterval: 1
+  # rollingAppenderPoliciesTimeModulate: true
+  # rollingAppenderStrategyType: DefaultRolloverStrategy
+  # rollingAppenderStrategyDeleteType: Delete
+  # rollingAppenderStrategyDeleteBasePath: "${basePath}"
+  # rollingAppenderStrategyDeleteMaxDepth: 10
+  # rollingAppenderStrategyDeleteIfLastModifiedType: IfLastModified
+
+  ## Delete all files older than 30 days
+  # rollingAppenderStrategyDeleteIfLastModifiedAge: 30d
+
+  ## Configure root logger
+  # rootLoggerLevel: info
+  # rootLoggerAppenderRefRollingRef: fileLogger
+
+## Additional log4j2 configuration items in log4j2.properties can be added
+##
+additionalLog4j2Properties:
+  appender.console.type: Console
+  appender.console.name: consoleLogger
+  appender.console.layout.type: PatternLayout
+  appender.console.layout.pattern: "%d{yyyy-MM-dd HH:mm:ss} %-5p [%t] %c{1}:%L - %m%n"
+  rootLogger.appenderRef.console.ref: consoleLogger
+
+initScript: |
+  cp /tmp/conf/* ${GRAVITINO_HOME}/conf
+  echo "Start the Gravitino Server"
+  /bin/bash ${GRAVITINO_HOME}/bin/gravitino.sh run
+
+## Expose the gravitino service to be accessed from outside the cluster (LoadBalancer service).
+## or access it from within the cluster (ClusterIP service). Set the service type and the port to serve it.
+## ref: http://kubernetes.io/docs/user-guide/services/
+##
+service:
+  name: openhouse-gravitino
+  type: ClusterIP
+  port: 8090
+  targetPort: 8090
+  annotations: {}
+  labels: {}
+  portName: http
+  nodePort: ""
+
+## Additional ports to the gravitino services. Useful to expose extra container ports.
+##
+extraExposePorts:
+  - port: 9001
+    protocol: TCP
+    name: http1
+    targetPort: 9001
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  hosts:
+    - host: openhouse.gravitino.test
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: gravitino-tls
+      hosts:
+        - openhouse.gravitino.test
+
+## Deployment annotations
+##
+annotations: {}
+
+## Deployment replicas
+##
+replicas: 1
+
+## Pod Annotations
+##
+podAnnotations: {}
+
+## Pod Labels
+##
+podLabels: {}
+
+## Readiness probe for the Gravitino deployment
+##
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 20
+  timeoutSeconds: 5
+
+## Liveness probe for the Gravitino deployment
+##
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 20
+  timeoutSeconds: 5
+
+## Container-specific security context configuration
+## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+##
+containerSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+
+## Container Environment
+##
+env:
+  - name: GRAVITINO_HOME
+    value: /root/gravitino
+  - name: GRAVITINO_MEM
+    ## gravitino.sh explicitly dùng ${GRAVITINO_MEM} trong JAVA_OPTS:
+    ##   JAVA_OPTS+=" -Dgravitino.log.path=... ${GRAVITINO_MEM}"
+    ## → Đây là cách DUY NHẤT đảm bảo JVM nhận được flags trong K8s pod.
+    ##
+    ## Các flags trustStore ở đây để JVM trust TLS cert của Keycloak (self-signed)
+    ## khi fetch OIDC discovery qua https://openhouse.keycloak.test/...
+    ## Truststore được tạo bởi initContainer import-keycloak-cert.
+    value: >-
+      -Xms1024m -Xmx1024m -XX:MaxMetaspaceSize=512m
+      -Djavax.net.ssl.trustStore=/opt/gravitino-truststore/gravitino.jks
+      -Djavax.net.ssl.trustStorePassword=changeit
+      -Djavax.net.ssl.trustStoreType=JKS
+  ## GRAVITINO_CLASSPATH: append AWS bundle JAR vào classpath khi Gravitino khởi động
+  ## JAR được download bởi initContainer vào /aws-ext-libs (mount từ aws-libs emptyDir)
+  ## Giải quyết lỗi: NoClassDefFoundError: software/amazon/awssdk/...
+  - name: GRAVITINO_CLASSPATH
+    value: "/aws-ext-libs/gravitino-iceberg-aws-bundle-1.1.0.jar"
+
+## The envWithTpl array below has the same usage as "env", but is using the tpl function to support templatable string.
+## This can be useful when you want to pass dynamic values to the Chart using the helm argument "--set <variable>=<value>"
+## https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
+##
+envWithTpl: []
+#  - name: FOO_2
+#    value: "{{ .Values.foo2 }}"
+
+# foo2: bar2
+
+envFrom: []
+
+## Resource limits & requests
+##
+resources: {}
+#   requests:
+#     cpu: 1000m
+#     memory: 2Gi
+#   limits:
+#     cpu: 2000m
+#     memory: 3Gi
+
+initResources: {}
+#  limits:
+#     cpu: "25m"
+#     memory: "128Mi"
+#  requests:
+#     cpu: "25m"
+#     memory: "128Mi"
+
+## Node labels for pod assignment
+## ref: https://kubernetes.io/docs/user-guide/node-selection/
+##
+nodeSelector: {}
+
+## Tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: []
+
+## Affinity for pod assignment (evaluated as template)
+## ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
+##
+affinity: {}
+
+## PodDisruptionBudget configuration
+## PodDisruptionBudgets limit the number of pods that can be down simultaneously during voluntary disruptions
+## (such as node drains, cluster upgrades, or pod evictions), ensuring high availability and service continuity.
+## ref: https://kubernetes.io/docs/tasks/run-application/configure-pdb/
+##
+podDisruptionBudget:
+  ## @param podDisruptionBudget.enabled Enable PodDisruptionBudget creation
+  ## Set to true to create a PodDisruptionBudget resource for the Gravitino deployment
+  ##
+  enabled: false
+
+  ## @param podDisruptionBudget.minAvailable Minimum number/percentage of pods that must remain available
+  ## Specify either an integer (e.g., 1, 2) or a percentage string (e.g., "50%")
+  ## This ensures at least this many pods stay running during voluntary disruptions
+  ##
+  ## Examples:
+  ##   minAvailable: 1           # At least 1 pod must remain available
+  ##   minAvailable: 2           # At least 2 pods must remain available
+  ##   minAvailable: "50%"       # At least 50% of pods must remain available
+  ##
+  ## When to use minAvailable:
+  ## - Use when you want to guarantee a minimum number of pods stay running
+  ## - Recommended for production deployments to ensure service availability
+  ## - With single replica (replicas: 1), minAvailable: 1 prevents all voluntary disruptions
+  ## - With multiple replicas, allows disruptions while maintaining minimum availability
+  ## - Only used when podDisruptionBudget.enabled: true. Set explicitly when enabling PDB.
+  ##
+  minAvailable: 1
+
+  ## @param podDisruptionBudget.maxUnavailable Maximum number/percentage of pods that can be unavailable
+  ## Specify either an integer (e.g., 1, 2) or a percentage string (e.g., "50%")
+  ## This limits how many pods can be down simultaneously during voluntary disruptions
+  ##
+  ## Examples:
+  ##   maxUnavailable: 1         # At most 1 pod can be unavailable
+  ##   maxUnavailable: 2         # At most 2 pods can be unavailable
+  ##   maxUnavailable: "25%"     # At most 25% of pods can be unavailable
+  ##
+  ## When to use maxUnavailable:
+  ## - Use when you want to control the rate of disruptions
+  ## - Useful for rolling updates and gradual scaling operations
+  ## - More flexible than minAvailable when scaling up/down
+  ##
+  ## IMPORTANT: Specify either minAvailable OR maxUnavailable, not both
+  ## If both are specified, Kubernetes will reject the PodDisruptionBudget and fail with an API validation error
+  ##
+  maxUnavailable: ""
+
+  ## @param podDisruptionBudget.labels Additional labels to apply to the PodDisruptionBudget resource
+  ## These labels are merged with the default Helm labels
+  ##
+  labels: {}
+  #   custom-label: value
+
+  ## @param podDisruptionBudget.annotations Additional annotations to apply to the PodDisruptionBudget resource
+  ## Useful for adding metadata or integration with other tools
+  ##
+  annotations: {}
+  #   custom-annotation: value
+
+## Relationship between PDB and replica count:
+## - Single replica (replicas: 1) + minAvailable: 1 = No voluntary disruptions allowed
+##   This prevents node drains and upgrades from evicting the only pod
+## - Multiple replicas (replicas: 3) + minAvailable: 2 = At least 2 pods must stay running
+##   Allows 1 pod to be disrupted at a time for maintenance
+## - Multiple replicas (replicas: 3) + maxUnavailable: 1 = At most 1 pod can be down
+##   Equivalent to minAvailable: 2 in this case
+##
+## Best practices:
+## - For production: Enable PDB with appropriate minAvailable or maxUnavailable
+## - For development/testing: Keep PDB disabled (default) for faster iterations
+## - Consider your replica count when setting PDB values
+## - Test PDB behavior in staging before applying to production
+
+## ── Extra InitContainers ─────────────────────────────────────────────────────
+## Dùng để download các JAR bổ sung cần thiết trước khi Gravitino khởi động.
+##
+## gravitino-iceberg-aws-bundle: AWS SDK v2 + S3FileIO implementation
+## Cần thiết để:
+##   1. Gravitino Catalog (lakehouse-iceberg) khởi tạo S3FileIO khi tạo catalog
+##   2. Iceberg REST server đọc/ghi data lên S3/MinIO
+##
+## Flow:
+##   initContainer download JAR vào emptyDir volume "aws-libs"
+##   → main container mount volume đó vào 2 lib dirs tương ứng
+##
+extraInitContainers:
+  ## ── Init Gravitino schema trên external PostgreSQL ───────────────────────
+  ## Cần thiết khi postgresql.enabled: false (dùng external PG thay vì bundled).
+  ## Helm chart chỉ chạy init-postgresql khi postgresql.enabled: true.
+  ## Container này copy scripts từ sqlfile initContainer (scripts-emptydir)
+  ## và chạy schema-*-postgresql.sql vào gravitino_db.
+  ## Idempotent: schema file dùng CREATE TABLE IF NOT EXISTS.
+  ## ─────────────────────────────────────────────────────────────────────────
+  - name: init-external-postgresql-schema
+    image: postgres:15-alpine
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "=== Waiting for external PostgreSQL to be ready ==="
+        until pg_isready -h openhouse-postgresql-primary -p 5432 -U gravitino; do
+          echo "PostgreSQL not ready, retrying in 3s..."
+          sleep 3
+        done
+
+        VERSION=$(cat /scripts/version.txt)
+        if [ -z "$VERSION" ]; then
+          echo "ERROR: Could not read Gravitino version from /scripts/version.txt"
+          exit 1
+        fi
+        echo "Gravitino version: $VERSION"
+
+        SCHEMA_FILE="/scripts/postgresql/schema-${VERSION}-postgresql.sql"
+        if [ ! -f "$SCHEMA_FILE" ]; then
+          echo "ERROR: Schema file not found: $SCHEMA_FILE"
+          echo "Available files:"
+          ls /scripts/postgresql/ || true
+          exit 1
+        fi
+
+        echo "=== Running schema: $SCHEMA_FILE ==="
+        PGPASSWORD=$POSTGRES_PASSWORD psql \
+          -h openhouse-postgresql-primary \
+          -p 5432 \
+          -U gravitino \
+          -d gravitino_db \
+          -f "$SCHEMA_FILE"
+        echo "=== Schema initialized successfully ==="
+    env:
+      - name: POSTGRES_PASSWORD
+        value: gravitino
+    volumeMounts:
+      - name: scripts-emptydir
+        mountPath: /scripts
+        readOnly: true
+
+  - name: download-aws-bundle
+    image: curlimages/curl:8.6.0
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        BUNDLE_JAR="gravitino-iceberg-aws-bundle-1.1.0.jar"
+        MAVEN_URL="https://repo1.maven.org/maven2/org/apache/gravitino/gravitino-iceberg-aws-bundle/1.1.0/${BUNDLE_JAR}"
+        TARGET="/aws-libs/${BUNDLE_JAR}"
+
+        if [ -f "$TARGET" ]; then
+          echo "JAR already exists, skipping download."
+        else
+          echo "Downloading ${BUNDLE_JAR} from Maven Central..."
+          curl -fSL --retry 3 --retry-delay 5 -o "$TARGET" "$MAVEN_URL"
+          echo "Download complete: $(ls -lh $TARGET)"
+        fi
+    volumeMounts:
+      - name: aws-libs
+        mountPath: /aws-libs
+
+  ## ── Import Keycloak CA cert vào JVM truststore ────────────────────────────
+  ## Cần thiết khi authority dùng HTTPS với self-signed cert của Keycloak.
+  ## JVM mặc định không trust self-signed cert → SSLHandshakeException
+  ## → JWKS JWT validation error khi fetch OIDC discovery.
+  ##
+  ## Flow:
+  ##   1. Copy cacerts mặc định của JRE (để giữ nguyên các CA public đã có)
+  ##   2. Import keycloak CA cert vào copy đó
+  ##   3. Lưu vào /truststore/gravitino.jks (shared volume)
+  ##   4. Main container dùng -Djavax.net.ssl.trustStore trỏ đến file này
+  ## ─────────────────────────────────────────────────────────────────────────
+  - name: import-keycloak-cert
+    image: eclipse-temurin:11-jre
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        JKS_TARGET="/truststore/gravitino.jks"
+        CA_CERT="/certs/ca.crt"
+        ALIAS="keycloak-ca"
+        STOREPASS="changeit"
+
+        echo "=== Copying default JRE cacerts ==="
+        # Tìm cacerts trong JRE hiện tại
+        CACERTS=$(find /opt/java -name "cacerts" 2>/dev/null | head -1)
+        if [ -z "${CACERTS}" ]; then
+          CACERTS=$(find /usr -name "cacerts" 2>/dev/null | head -1)
+        fi
+        echo "Found cacerts: ${CACERTS}"
+        cp "${CACERTS}" "${JKS_TARGET}"
+        chmod 644 "${JKS_TARGET}"
+
+        echo "=== Importing Keycloak CA cert ==="
+        keytool -importcert \
+          -alias "${ALIAS}" \
+          -file "${CA_CERT}" \
+          -keystore "${JKS_TARGET}" \
+          -storepass "${STOREPASS}" \
+          -storetype JKS \
+          -noprompt
+        echo "=== Import thành công ==="
+        keytool -list -keystore "${JKS_TARGET}" -storepass "${STOREPASS}" | grep "${ALIAS}"
+    volumeMounts:
+      - name: truststore
+        mountPath: /truststore
+      - name: keycloak-ca-cert
+        mountPath: /certs
+        readOnly: true

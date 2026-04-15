@@ -1,0 +1,27 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spark-submit-role
+  labels:
+    app: airflow
+    component: spark-submit
+rules:
+  # Permission to manage SparkApplications
+  - apiGroups: ["sparkoperator.k8s.io"]
+    resources: ["sparkapplications"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+
+  # Permission to get/list pods (for monitoring Spark driver/executor pods)
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+
+  # Permission to get/list services (for Spark UI service)
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list"]
+
+  # Permission to get configmaps (if SparkApplication needs it)
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]

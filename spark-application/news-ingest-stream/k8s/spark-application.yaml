@@ -1,0 +1,48 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: news-ingest-stream
+  namespace: stock-anomaly-detection
+spec:
+  type: Scala
+  mode: cluster
+  image: "<REGISTRY>/news-ingest-stream:latest"
+  imagePullPolicy: Always
+  mainClass: NewsIngestStream
+  mainApplicationFile: "local:///opt/spark/jars/news-ingest-stream-assembly-1.0.0.jar"
+  sparkVersion: "3.5.1"
+
+  sparkConf:
+    "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions"
+    "spark.sql.catalog.gravitino_catalog": "org.apache.iceberg.spark.SparkCatalog"
+    "spark.sql.catalog.gravitino_catalog.type": "rest"
+    # URI and warehouse are injected at runtime via env vars inside the app
+
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 3
+    onFailureRetryInterval: 30
+    onSubmissionFailureRetries: 3
+    onSubmissionFailureRetryInterval: 20
+
+  driver:
+    cores: 1
+    memory: "512m"
+    serviceAccount: spark
+    envFrom:
+      - secretRef:
+          name: spark-env-secrets
+    labels:
+      spark-role: driver
+      spark-app-name: news-ingest-stream
+
+  executor:
+    instances: 1
+    cores: 1
+    memory: "1g"
+    envFrom:
+      - secretRef:
+          name: spark-env-secrets
+    labels:
+      spark-role: executor
+      spark-app-name: news-ingest-stream

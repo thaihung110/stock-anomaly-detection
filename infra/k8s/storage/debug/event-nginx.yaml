@@ -1,0 +1,67 @@
+Name:             ingress-nginx-controller-5bb8b5db5c-pqdml
+Namespace:        ingress-nginx
+Priority:         0
+Service Account:  ingress-nginx
+Node:             <none>
+Labels:           app.kubernetes.io/component=controller
+                  app.kubernetes.io/instance=ingress-nginx
+                  app.kubernetes.io/name=ingress-nginx
+                  app.kubernetes.io/part-of=ingress-nginx
+                  app.kubernetes.io/version=1.13.2
+                  pod-template-hash=5bb8b5db5c
+Annotations:      <none>
+Status:           Pending
+IP:               
+IPs:              <none>
+Controlled By:    ReplicaSet/ingress-nginx-controller-5bb8b5db5c
+Containers:
+  controller:
+    Image:           registry.k8s.io/ingress-nginx/controller:v1.13.2@sha256:1f7eaeb01933e719c8a9f4acd8181e555e582330c7d50f24484fb64d2ba9b2ef
+    Ports:           80/TCP, 443/TCP, 8443/TCP
+    Host Ports:      0/TCP, 0/TCP, 0/TCP
+    SeccompProfile:  RuntimeDefault
+    Args:
+      /nginx-ingress-controller
+      --publish-service=$(POD_NAMESPACE)/ingress-nginx-controller
+      --election-id=ingress-nginx-leader
+      --controller-class=k8s.io/ingress-nginx
+      --ingress-class=nginx
+      --configmap=$(POD_NAMESPACE)/ingress-nginx-controller
+      --validating-webhook=:8443
+      --validating-webhook-certificate=/usr/local/certificates/cert
+      --validating-webhook-key=/usr/local/certificates/key
+    Requests:
+      cpu:      100m
+      memory:   90Mi
+    Liveness:   http-get http://:10254/healthz delay=10s timeout=1s period=10s #success=1 #failure=5
+    Readiness:  http-get http://:10254/healthz delay=10s timeout=1s period=10s #success=1 #failure=3
+    Environment:
+      POD_NAME:       ingress-nginx-controller-5bb8b5db5c-pqdml (v1:metadata.name)
+      POD_NAMESPACE:  ingress-nginx (v1:metadata.namespace)
+      LD_PRELOAD:     /usr/local/lib/libmimalloc.so
+    Mounts:
+      /usr/local/certificates/ from webhook-cert (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-5jggr (ro)
+Conditions:
+  Type           Status
+  PodScheduled   False 
+Volumes:
+  webhook-cert:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  ingress-nginx-admission
+    Optional:    false
+  kube-api-access-5jggr:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    ConfigMapOptional:       <nil>
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              kubernetes.io/os=linux
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason            Age                  From               Message
+  ----     ------            ----                 ----               -------
+  Warning  FailedScheduling  4m11s                default-scheduler  0/1 nodes are available: 1 Insufficient memory. preemption: 0/1 nodes are available: 1 No preemption victims found for incoming pod.
+  Warning  FailedScheduling  4m9s (x2 over 4m9s)  default-scheduler  0/1 nodes are available: 1 Insufficient memory. preemption: 0/1 nodes are available: 1 No preemption victims found for incoming pod.

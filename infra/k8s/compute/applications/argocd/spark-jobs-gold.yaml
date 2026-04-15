@@ -1,0 +1,51 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spark-jobs-gold
+  namespace: argocd
+  labels:
+    app: data-lakehouse
+    layer: gold
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/your-org/data-platform.git # TODO: Update with actual repo URL
+    targetRevision: main
+    path: infra/k8s/compute/applications/spark/gold-layer/jobs
+
+    directory:
+      recurse: true
+      include: "*.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: data-platform
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: sparkoperator.k8s.io
+      kind: SparkApplication
+      jsonPointers:
+        - /status
+        - /metadata/generation
+
+  statusBadgeEnabled: true

@@ -1,0 +1,156 @@
+---
+# Source: kafka-ui/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openhouse-kafka-ui
+  namespace: default
+  labels:
+    helm.sh/chart: kafka-ui-0.7.6
+    app.kubernetes.io/name: kafka-ui
+    app.kubernetes.io/instance: openhouse-kafka-ui
+    app.kubernetes.io/version: "v0.7.2"
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: kafka-ui/templates/configmap_fromValues.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openhouse-kafka-ui-fromvalues
+  namespace: default
+  labels:
+    helm.sh/chart: kafka-ui-0.7.6
+    app.kubernetes.io/name: kafka-ui
+    app.kubernetes.io/instance: openhouse-kafka-ui
+    app.kubernetes.io/version: "v0.7.2"
+    app.kubernetes.io/managed-by: Helm
+data:
+  config.yml: |-
+    auth:
+      type: disabled
+    kafka:
+      clusters:
+      - bootstrapServers: openhouse-kafka:9092
+        name: openhouse-kafka
+    management:
+      health:
+        ldap:
+          enabled: false
+---
+# Source: kafka-ui/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhouse-kafka-ui
+  namespace: default
+  labels:
+    helm.sh/chart: kafka-ui-0.7.6
+    app.kubernetes.io/name: kafka-ui
+    app.kubernetes.io/instance: openhouse-kafka-ui
+    app.kubernetes.io/version: "v0.7.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: kafka-ui
+    app.kubernetes.io/instance: openhouse-kafka-ui
+---
+# Source: kafka-ui/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhouse-kafka-ui
+  namespace: default
+  labels:
+    helm.sh/chart: kafka-ui-0.7.6
+    app.kubernetes.io/name: kafka-ui
+    app.kubernetes.io/instance: openhouse-kafka-ui
+    app.kubernetes.io/version: "v0.7.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka-ui
+      app.kubernetes.io/instance: openhouse-kafka-ui
+  template:
+    metadata:
+      annotations:
+        checksum/config: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        checksum/configFromValues: 2ab345fc24e4de23e44890f7030c2510257eb3430121ae796c8eac115515268f
+        checksum/secret: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+      labels:
+        app.kubernetes.io/name: kafka-ui
+        app.kubernetes.io/instance: openhouse-kafka-ui
+    spec:
+      serviceAccountName: openhouse-kafka-ui
+      securityContext:
+        {}
+      containers:
+        - name: kafka-ui
+          securityContext:
+            {}
+          image: docker.io/provectuslabs/kafka-ui:v0.7.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SPRING_CONFIG_ADDITIONAL-LOCATION
+              value: /kafka-ui/config.yml
+          envFrom:    
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            {}
+          volumeMounts:
+            - name: kafka-ui-yaml-conf
+              mountPath: /kafka-ui/
+      volumes:
+        - name: kafka-ui-yaml-conf
+          configMap: 
+            name: openhouse-kafka-ui-fromvalues
+---
+# Source: kafka-ui/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: openhouse-kafka-ui
+  namespace: default
+  labels:
+    helm.sh/chart: kafka-ui-0.7.6
+    app.kubernetes.io/name: kafka-ui
+    app.kubernetes.io/instance: openhouse-kafka-ui
+    app.kubernetes.io/version: "v0.7.2"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - backend:
+              service:
+                name: openhouse-kafka-ui
+                port:
+                  number: 80
+            pathType: Prefix
+            path: /
+      host: openhouse.kafka-ui.test

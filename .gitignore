@@ -1,0 +1,40 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Logs and local env files
+*.log
+.env
+.env.*
+
+# Scala / SBT / Metals / Bloop
+.bsp/
+.bloop/
+.metals/
+target/
+project/target/
+project/project/target/
+lib_managed/
+src_managed/
+project/metals.sbt
+metals.sbt
+
+.claude/
+.dual-graph/
+.scala-build/
+
+# Spark app build outputs
+spark-application/**/target/
+spark-application/**/project/target/
+
+# IDE + tooling caches
+.cache/
+tmp/

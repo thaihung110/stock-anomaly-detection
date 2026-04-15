@@ -1,0 +1,807 @@
+---
+# Source: spark-operator/templates/controller/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: true
+metadata:
+  name: openhouse-spark-operator-controller
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+---
+# Source: spark-operator/templates/spark/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: true
+metadata:
+  name: openhouse-spark-operator-spark
+  namespace: default
+  labels: 
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+---
+# Source: spark-operator/templates/webhook/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: true
+metadata:
+  name: openhouse-spark-operator-webhook
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+---
+# Source: spark-operator/templates/controller/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openhouse-spark-operator-controller
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+---
+# Source: spark-operator/templates/webhook/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openhouse-spark-operator-webhook
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - update
+  - patch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  resourceNames:
+  - openhouse-spark-operator-webhook
+  verbs:
+  - get
+  - update
+---
+# Source: spark-operator/templates/controller/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openhouse-spark-operator-controller
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+subjects:
+- kind: ServiceAccount
+  name: openhouse-spark-operator-controller
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openhouse-spark-operator-controller
+---
+# Source: spark-operator/templates/webhook/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openhouse-spark-operator-webhook
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+subjects:
+- kind: ServiceAccount
+  name: openhouse-spark-operator-webhook
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openhouse-spark-operator-webhook
+---
+# Source: spark-operator/templates/controller/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openhouse-spark-operator-controller
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+rules:
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  resourceNames:
+  - openhouse-spark-operator-controller-lock
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+  - deletecollection
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - update
+  - patch
+- apiGroups:
+  - extensions
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - delete
+- apiGroups:
+  - sparkoperator.k8s.io
+  resources:
+  - sparkapplications
+  - scheduledsparkapplications
+  - sparkconnects
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - sparkoperator.k8s.io
+  resources:
+  - sparkapplications/status
+  - sparkapplications/finalizers
+  - scheduledsparkapplications/status
+  - scheduledsparkapplications/finalizers
+  - sparkconnects/status
+  - sparkconnects/finalizers
+  verbs:
+  - get
+  - update
+  - patch
+---
+# Source: spark-operator/templates/spark/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openhouse-spark-operator-spark
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - configmaps
+  - persistentvolumeclaims
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+  - deletecollection
+---
+# Source: spark-operator/templates/webhook/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openhouse-spark-operator-webhook
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  resourceNames:
+  - openhouse-spark-operator-webhook-certs
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  resourceNames:
+  - openhouse-spark-operator-webhook-lock
+  verbs:
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - resourcequotas
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - sparkoperator.k8s.io
+  resources:
+  - sparkapplications
+  - sparkapplications/status
+  - sparkapplications/finalizers
+  - scheduledsparkapplications
+  - scheduledsparkapplications/status
+  - scheduledsparkapplications/finalizers
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+---
+# Source: spark-operator/templates/controller/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openhouse-spark-operator-controller
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+subjects:
+- kind: ServiceAccount
+  name: openhouse-spark-operator-controller
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openhouse-spark-operator-controller
+---
+# Source: spark-operator/templates/spark/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openhouse-spark-operator-spark
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+subjects:
+- kind: ServiceAccount
+  name: openhouse-spark-operator-spark
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openhouse-spark-operator-spark
+---
+# Source: spark-operator/templates/webhook/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openhouse-spark-operator-webhook
+  namespace: default
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+subjects:
+- kind: ServiceAccount
+  name: openhouse-spark-operator-webhook
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openhouse-spark-operator-webhook
+---
+# Source: spark-operator/templates/webhook/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: openhouse-spark-operator-webhook-svc
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+spec:
+  selector:
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/component: webhook
+  ports:
+  - port: 9443
+    targetPort: "webhook"
+    name: webhook
+---
+# Source: spark-operator/templates/controller/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhouse-spark-operator-controller
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-operator
+      app.kubernetes.io/instance: openhouse-spark-operator
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spark-operator
+        app.kubernetes.io/instance: openhouse-spark-operator
+        app.kubernetes.io/component: controller
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+      - name: spark-operator-controller
+        image: ghcr.io/kubeflow/spark-operator/controller:2.4.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - controller
+        - start
+        - --zap-log-level=info
+        - --zap-encoder=console
+        - --namespaces=default
+        - --controller-threads=10
+        - --enable-ui-service=true
+        - --enable-metrics=true
+        - --metrics-bind-address=:8080
+        - --metrics-endpoint=/metrics
+        - --metrics-prefix=
+        - --metrics-labels=app_type
+        - --metrics-job-start-latency-buckets=30,60,90,120,150,180,210,240,270,300
+        
+        - --leader-election=true
+        - --leader-election-lock-name=openhouse-spark-operator-controller-lock
+        - --leader-election-lock-namespace=default
+        - --leader-election-lease-duration=15s
+        - --leader-election-renew-deadline=10s
+        - --leader-election-retry-period=2s
+        - --workqueue-ratelimiter-bucket-qps=50
+        - --workqueue-ratelimiter-bucket-size=500
+        - --workqueue-ratelimiter-max-delay=6h
+        - --driver-pod-creation-grace-period=10s
+        - --max-tracked-executor-per-app=1000
+        ports:
+        - name: "metrics"
+          containerPort: 8080
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+          readOnly: false
+        livenessProbe:
+          httpGet:
+            port: 8081
+            scheme: HTTP
+            path: /healthz
+        readinessProbe:
+          httpGet:
+            port: 8081
+            scheme: HTTP
+            path: /readyz
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+      volumes:
+      - emptyDir:
+          sizeLimit: 1Gi
+        name: tmp
+      serviceAccountName: openhouse-spark-operator-controller
+      automountServiceAccountToken: true
+      securityContext:
+        fsGroup: 185
+---
+# Source: spark-operator/templates/webhook/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openhouse-spark-operator-webhook
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-operator
+      app.kubernetes.io/instance: openhouse-spark-operator
+      app.kubernetes.io/component: webhook
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spark-operator
+        app.kubernetes.io/instance: openhouse-spark-operator
+        app.kubernetes.io/component: webhook
+    spec:
+      containers:
+      - name: spark-operator-webhook
+        image: ghcr.io/kubeflow/spark-operator/controller:2.4.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - webhook
+        - start
+        - --zap-log-level=info
+        - --zap-encoder=console
+        - --namespaces=default
+        - --webhook-secret-name=openhouse-spark-operator-webhook-certs
+        - --webhook-secret-namespace=default
+        - --webhook-svc-name=openhouse-spark-operator-webhook-svc
+        - --webhook-svc-namespace=default
+        - --webhook-port=9443
+        - --mutating-webhook-name=openhouse-spark-operator-webhook
+        - --validating-webhook-name=openhouse-spark-operator-webhook
+        - --enable-metrics=true
+        - --metrics-bind-address=:8080
+        - --metrics-endpoint=/metrics
+        - --metrics-prefix=
+        - --metrics-labels=app_type
+        
+        - --leader-election=true
+        - --leader-election-lock-name=openhouse-spark-operator-webhook-lock
+        - --leader-election-lock-namespace=default
+        ports:
+        - name: "webhook"
+          containerPort: 9443
+        - name: "metrics"
+          containerPort: 8080
+        volumeMounts:
+        - mountPath: /etc/k8s-webhook-server/serving-certs
+          name: serving-certs
+          readOnly: false
+          subPath: serving-certs
+        livenessProbe:
+          httpGet:
+            port: 8081
+            scheme: HTTP
+            path: /healthz
+        readinessProbe:
+          httpGet:
+            port: 8081
+            scheme: HTTP
+            path: /readyz
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          seccompProfile:
+            type: RuntimeDefault
+      volumes:
+      - emptyDir:
+          sizeLimit: 500Mi
+        name: serving-certs
+      serviceAccountName: openhouse-spark-operator-webhook
+      automountServiceAccountToken: true
+      securityContext:
+        fsGroup: 185
+---
+# Source: spark-operator/templates/webhook/mutatingwebhookconfiguration.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: openhouse-spark-operator-webhook
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+webhooks:
+- name: mutate--v1-pod.sparkoperator.k8s.io
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      name: openhouse-spark-operator-webhook-svc
+      namespace: default
+      port: 9443
+      path: /mutate--v1-pod
+  sideEffects: NoneOnDryRun
+  failurePolicy: Fail
+  namespaceSelector:
+    matchExpressions:
+    - key: kubernetes.io/metadata.name
+      operator: In
+      values:
+      - default
+  objectSelector:
+    matchLabels:
+      sparkoperator.k8s.io/launched-by-spark-operator: "true"
+  rules:
+  - apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+    operations: ["CREATE"]
+  timeoutSeconds: 10
+- name: mutate-sparkoperator-k8s-io-v1beta2-sparkapplication.sparkoperator.k8s.io
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      name: openhouse-spark-operator-webhook-svc
+      namespace: default
+      port: 9443
+      path: /mutate-sparkoperator-k8s-io-v1beta2-sparkapplication
+  sideEffects: NoneOnDryRun
+  failurePolicy: Fail
+  namespaceSelector:
+    matchExpressions:
+    - key: kubernetes.io/metadata.name
+      operator: In
+      values:
+      - default
+  rules:
+  - apiGroups: ["sparkoperator.k8s.io"]
+    apiVersions: ["v1beta2"]
+    resources: ["sparkapplications"]
+    operations: ["CREATE", "UPDATE"]
+  timeoutSeconds: 10
+- name: mutate-sparkoperator-k8s-io-v1beta2-scheduledsparkapplication.sparkoperator.k8s.io
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      name: openhouse-spark-operator-webhook-svc
+      namespace: default
+      port: 9443
+      path: /mutate-sparkoperator-k8s-io-v1beta2-scheduledsparkapplication
+  sideEffects: NoneOnDryRun
+  failurePolicy: Fail
+  namespaceSelector:
+    matchExpressions:
+    - key: kubernetes.io/metadata.name
+      operator: In
+      values:
+      - default
+  rules:
+  - apiGroups: ["sparkoperator.k8s.io"]
+    apiVersions: ["v1beta2"]
+    resources: ["scheduledsparkapplications"]
+    operations: ["CREATE", "UPDATE"]
+  timeoutSeconds: 10
+---
+# Source: spark-operator/templates/webhook/validatingwebhookconfiguration.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: openhouse-spark-operator-webhook
+  labels:
+    helm.sh/chart: spark-operator-2.4.0
+    app.kubernetes.io/name: spark-operator
+    app.kubernetes.io/instance: openhouse-spark-operator
+    app.kubernetes.io/version: "2.4.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook
+webhooks:
+- name: validate-sparkoperator-k8s-io-v1beta2-sparkapplication.sparkoperator.k8s.io
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      name: openhouse-spark-operator-webhook-svc
+      namespace: default
+      port: 9443
+      path: /validate-sparkoperator-k8s-io-v1beta2-sparkapplication
+  sideEffects: NoneOnDryRun
+  failurePolicy: Fail
+  namespaceSelector:
+    matchExpressions:
+    - key: kubernetes.io/metadata.name
+      operator: In
+      values:
+      - default
+  rules:
+  - apiGroups: ["sparkoperator.k8s.io"]
+    apiVersions: ["v1beta2"]
+    resources: ["sparkapplications"]
+    operations: ["CREATE", "UPDATE"]
+  timeoutSeconds: 10
+- name: validate-sparkoperator-k8s-io-v1beta2-scheduledsparkapplication.sparkoperator.k8s.io
+  admissionReviewVersions: ["v1"]
+  clientConfig:
+    service:
+      name: openhouse-spark-operator-webhook-svc
+      namespace: default
+      port: 9443
+      path: /validate-sparkoperator-k8s-io-v1beta2-scheduledsparkapplication
+  sideEffects: NoneOnDryRun
+  failurePolicy: Fail
+  namespaceSelector:
+    matchExpressions:
+    - key: kubernetes.io/metadata.name
+      operator: In
+      values:
+      - default
+  rules:
+  - apiGroups: ["sparkoperator.k8s.io"]
+    apiVersions: ["v1beta2"]
+    resources: ["scheduledsparkapplications"]
+    operations: ["CREATE", "UPDATE"]
+  timeoutSeconds: 10
