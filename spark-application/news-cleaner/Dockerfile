@@ -43,8 +43,8 @@ RUN chmod +x /opt/entrypoint.sh && \
 ENV SPARK_HOME=/opt/spark
 ENV PATH="${SPARK_HOME}/bin:${SPARK_HOME}/sbin:${PATH}"
 
-COPY --from=builder /build/target/scala-2.12/news-ingest-stream-assembly-1.0.0.jar \
-     /opt/spark/jars/news-ingest-stream-assembly-1.0.0.jar
+COPY --from=builder /build/target/scala-2.12/news-cleaner-assembly-1.0.0.jar \
+     /opt/spark/jars/news-cleaner-assembly-1.0.0.jar
 
 WORKDIR /opt/spark/work-dir
 USER spark
