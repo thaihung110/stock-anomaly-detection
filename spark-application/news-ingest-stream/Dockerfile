@@ -27,7 +27,7 @@ FROM apache/spark:3.5.3-scala2.12-java17-ubuntu AS spark-files
 # amazoncorretto:17-alpine3.21: Amazon backports security patches aggressively
 FROM amazoncorretto:17-alpine3.21
 
-RUN apk add --no-cache bash tini procps && \
+RUN apk add --no-cache bash tini procps libstdc++ && \
     ln -s /sbin/tini /usr/bin/tini && \
     addgroup -S -g 185 spark && \
     adduser -S -u 185 -G spark -H -s /bin/bash spark
