@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+  <Appenders>
+    <Console name="console" target="SYSTEM_OUT">
+      <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n"/>
+    </Console>
+  </Appenders>
+  <Loggers>
+    <Logger name="com.stockanomalydetection" level="INFO" additivity="false">
+      <AppenderRef ref="console"/>
+    </Logger>
+
+    <Logger name="org.apache.spark" level="WARN" additivity="false">
+      <AppenderRef ref="console"/>
+    </Logger>
+    <Logger name="org.apache.spark.scheduler.cluster.k8s" level="ERROR" additivity="false">
+      <AppenderRef ref="console"/>
+    </Logger>
+    <Logger name="io.fabric8.kubernetes.client" level="ERROR" additivity="false">
+      <AppenderRef ref="console"/>
+    </Logger>
+    <Logger name="org.apache.hadoop" level="WARN" additivity="false">
+      <AppenderRef ref="console"/>
+    </Logger>
+    <Logger name="org.apache.iceberg" level="WARN" additivity="false">
+      <AppenderRef ref="console"/>
+    </Logger>
+
+    <Root level="WARN">
+      <AppenderRef ref="console"/>
+    </Root>
+  </Loggers>
+</Configuration>

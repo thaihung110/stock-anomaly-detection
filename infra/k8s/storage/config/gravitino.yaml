@@ -292,7 +292,7 @@ icebergRest:
     uri: "http://localhost:8090"
     ## Metalake thực tế đang tồn tại trong Gravitino
     ## (xem tại: https://openhouse.gravitino.test/ui)
-    metalake: "Default_metalake"
+    metalake: "stock_metalake"
     ## defaultCatalogName: bỏ — Spark tự truyền warehouse=<catalog-name> trong config
     ## VD: spark.sql.catalog.bronze.warehouse = "bronze"
 
@@ -440,7 +440,7 @@ additionalConfigItems:
   ## ══════════════════════════════════════════════════════════════════
   gravitino.iceberg-rest.gravitino-auth-type: "oauth2"
   gravitino.iceberg-rest.gravitino-oauth2.server-uri: "http://openhouse-keycloak"
-  gravitino.iceberg-rest.gravitino-oauth2.credential: "spark:YeG2U2zPQqnLoIfD3Bc3c55pfIUnDNFd"
+  gravitino.iceberg-rest.gravitino-oauth2.credential: "spark:NTa3QMwThYy3Tdv2jXECUZB5NNWZbB6s"
   gravitino.iceberg-rest.gravitino-oauth2.token-path: "realms/iceberg/protocol/openid-connect/token"
   gravitino.iceberg-rest.gravitino-oauth2.scope: "gravitino"
 

@@ -1,0 +1,172 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gravitino-iceberg-debug
+  namespace: stock-anomaly-detection
+  labels:
+    app: gravitino-iceberg-debug
+    purpose: debugging
+spec:
+  restartPolicy: OnFailure
+  containers:
+    - name: debug
+      image: curlimages/curl:8.6.0
+      command: ["sleep", "infinity"]
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      env:
+        # Gravitino main API (management/admin) — default namespace
+        - name: GRAVITINO_API
+          value: "http://openhouse-gravitino:8090"
+        # Gravitino Iceberg REST auxiliary service — default namespace
+        - name: GRAVITINO_ICEBERG_REST
+          value: "http://openhouse-gravitino:9001"
+        # Keycloak token endpoint — use SHORT hostname so iss="http://openhouse-keycloak/..."
+        # which is already in Gravitino's authorities list.
+        # The FQDN variant (.default.svc.cluster.local) produces a different iss
+        # that was NOT trusted until the authorities list was updated in gravitino.yaml.
+        - name: KEYCLOAK_TOKEN_URL
+          value: "http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token"
+        # OAuth2 credentials for the "spark" client (same as CatalogConfigurator)
+        - name: OAUTH_CLIENT_ID
+          value: "spark"
+        - name: GRAVITINO_METALAKE
+          value: "stock_metalake"
+        - name: ICEBERG_WAREHOUSE
+          value: "bronze"
+        - name: OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: spark-app-secrets
+              key: GRAVITINO_OAUTH_CLIENT_SECRET
+
+# ============================================================
+# HOW TO USE THIS POD
+# ============================================================
+#
+# 1. Apply:
+#    kubectl apply -f infra/k8s/compute/debug/gravitino-iceberg-debug-pod.yaml
+#
+# 2. Wait for Running:
+#    kubectl wait --for=condition=Ready pod/gravitino-iceberg-debug \
+#      -n stock-anomaly-detection --timeout=60s
+#
+# 3. Exec in:
+#    kubectl exec -it gravitino-iceberg-debug -n stock-anomaly-detection -- sh
+#
+# Inside the pod, run the commands below IN ORDER.
+# ============================================================
+#
+# ── STEP A: DNS / NETWORK REACHABILITY ────────────────────────────────────────
+#
+#   # A1. Verify the Gravitino main API responds (no auth required for /api/version)
+#   curl -sv ${GRAVITINO_API}/api/version
+#   # Expected: {"version":{"gitCommit":"...","version":"1.1.0",...},"code":0}
+#
+#   # A2. Verify the Iceberg REST auxiliary service responds — test WITHOUT /iceberg/ prefix
+#   curl -sv ${GRAVITINO_ICEBERG_REST}/v1/config
+#   # If this returns valid JSON → URI without /iceberg/ is correct.
+#   # If this returns 404/empty → try WITH /iceberg/ (Step A3).
+#
+#   # A3. Test WITH /iceberg/ prefix
+#   curl -sv ${GRAVITINO_ICEBERG_REST}/iceberg/v1/config
+#   # Whichever A2 or A3 returns valid JSON is the correct base URI for Spark config.
+#
+# ── STEP B: OBTAIN OAUTH2 TOKEN ───────────────────────────────────────────────
+#
+#   TOKEN=$(curl -s -X POST ${KEYCLOAK_TOKEN_URL} -H "Content-Type: application/x-www-form-urlencoded" -d "client_id=${OAUTH_CLIENT_ID}" -d "client_secret=${OAUTH_CLIENT_SECRET}" -d "grant_type=client_credentials" -d "scope=gravitino" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+#
+#   echo "TOKEN=${TOKEN:0:40}..."   # Print first 40 chars to confirm it was obtained
+#
+# ── STEP C: GRAVITINO METADATA API — CHECK METALAKE & CATALOG ────────────────
+#
+#   # C1. List all metalakes
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     ${GRAVITINO_API}/api/metalakes | grep -o '"name":"[^"]*"'
+#   # Expected: "name":"Default_metalake"
+#
+#   # C2. List catalogs under Default_metalake
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     ${GRAVITINO_API}/api/metalakes/${GRAVITINO_METALAKE}/catalogs | grep -o '"name":"[^"]*"'
+#   # Expected: one entry named "bronze" (or whatever the catalog name is)
+#   # If "bronze" is missing → the catalog has not been created yet (see Step E)
+#
+#   # C3. List schemas (namespaces) inside the bronze catalog
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     ${GRAVITINO_API}/api/metalakes/${GRAVITINO_METALAKE}/catalogs/${ICEBERG_WAREHOUSE}/schemas
+#   # Expected: a schema named "bronze" listed in the results
+#
+#   # C4. List tables inside bronze.bronze schema
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     ${GRAVITINO_API}/api/metalakes/${GRAVITINO_METALAKE}/catalogs/${ICEBERG_WAREHOUSE}/schemas/bronze/tables
+#   # Expected: raw_news_articles should appear here
+#
+# ── STEP D: ICEBERG REST API — CHECK NAMESPACE & TABLE ───────────────────────
+# (Use the BASE_URI that worked in Step A — either with or without /iceberg/)
+#
+#   # Set the correct base URI based on Step A result:
+#   BASE_URI=${GRAVITINO_ICEBERG_REST}          # without /iceberg/
+#   # OR
+#   BASE_URI=${GRAVITINO_ICEBERG_REST}/iceberg  # with /iceberg/
+#
+#   # D1. Get catalog config (shows warehouse resolution)
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     -H "X-Iceberg-Access-Delegation: vended-credentials" \
+#     "${BASE_URI}/v1/config?warehouse=${ICEBERG_WAREHOUSE}"
+#
+#   # D2. List namespaces
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     "${BASE_URI}/v1/namespaces?warehouse=${ICEBERG_WAREHOUSE}"
+#   # Expected: namespace "bronze" appears
+#
+#   # D3. List tables in namespace bronze
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     "${BASE_URI}/v1/namespaces/bronze/tables?warehouse=${ICEBERG_WAREHOUSE}"
+#   # Expected: raw_news_articles appears
+#   # If empty → table needs to be created (see CatalogConfigurator / CREATE TABLE)
+#
+# ── STEP E: CREATE MISSING CATALOG/NAMESPACE/TABLE (if needed) ───────────────
+#
+#   # E1. Create catalog "bronze" under Default_metalake (only if Step C2 shows it missing)
+#   curl -s -X POST -H "Authorization: Bearer ${TOKEN}" \
+#     -H "Content-Type: application/json" \
+#     ${GRAVITINO_API}/api/metalakes/${GRAVITINO_METALAKE}/catalogs \
+#     -d '{
+#       "name": "bronze",
+#       "type": "RELATIONAL",
+#       "provider": "lakehouse-iceberg",
+#       "comment": "Bronze layer Iceberg catalog",
+#       "properties": {
+#         "catalog-backend": "jdbc",
+#         "uri": "jdbc:postgresql://openhouse-postgresql-primary:5432/iceberg_catalog_db",
+#         "jdbc-user": "iceberg",
+#         "jdbc-password": "iceberg_secret",
+#         "jdbc-driver": "org.postgresql.Driver",
+#         "jdbc-initialize": "true",
+#         "warehouse": "s3://warehouse/bronze",
+#         "io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+#         "s3-access-key-id": "YOUR_MINIO_ACCESS_KEY",
+#         "s3-secret-access-key": "YOUR_MINIO_SECRET_KEY",
+#         "s3-endpoint": "http://openhouse-minio.default.svc.cluster.local:9000",
+#         "s3-path-style-access": "true",
+#         "s3-region": "us-east-1"
+#       }
+#     }'
+#
+#   # E2. Create namespace "bronze" (only if Step D2 shows it missing)
+#   curl -s -X POST -H "Authorization: Bearer ${TOKEN}" \
+#     -H "Content-Type: application/json" \
+#     "${BASE_URI}/v1/namespaces?warehouse=${ICEBERG_WAREHOUSE}" \
+#     -d '{"namespace": ["bronze"], "properties": {}}'
+#
+# ── STEP F: VERIFY FIX ────────────────────────────────────────────────────────
+#
+#   # After applying code fix and redeploying, confirm table is resolvable:
+#   curl -s -H "Authorization: Bearer ${TOKEN}" \
+#     "${BASE_URI}/v1/namespaces/bronze/tables?warehouse=${ICEBERG_WAREHOUSE}"
+#   # Must show: raw_news_articles

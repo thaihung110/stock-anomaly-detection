@@ -148,7 +148,18 @@ ingress:
     enabled: true
 
     # Annotations for the API Server Ingress
-    annotations: {}
+    annotations:
+      # Disable nginx retry-on-next-upstream to prevent the OAuth2 authorization
+      # code from being consumed twice. Without this, nginx retries the GET
+      # /auth/login_callback on a second keepalive connection when the first
+      # upstream response is not forwarded cleanly, causing "Code not valid" (invalid_grant).
+      nginx.ingress.kubernetes.io/proxy-next-upstream: "off"
+      nginx.ingress.kubernetes.io/proxy-buffering: "off"
+      # Increase proxy_buffer_size to 16k to handle large JWT Set-Cookie headers
+      # from Airflow's login_callback 303 response. Default 4k causes nginx to
+      # return 502 ("upstream sent too big header"), forcing browser to retry the
+      # callback with an already-used code → "Code not valid" (invalid_grant).
+      nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
 
     # The path for the API Server Ingress
     path: "/"
@@ -393,18 +404,14 @@ secret: []
 # in this case disable setting of those variables by setting the relevant configuration to false.
 enableBuiltInSecretEnvVars:
   AIRFLOW__CORE__FERNET_KEY: true
-  # For Airflow <2.3, backward compatibility; moved to [database] in 2.3
-  AIRFLOW__CORE__SQL_ALCHEMY_CONN: true
   AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: true
   AIRFLOW_CONN_AIRFLOW_DB: true
   AIRFLOW__API__SECRET_KEY: true
   AIRFLOW__API_AUTH__JWT_SECRET: true
   AIRFLOW__WEBSERVER__SECRET_KEY: true
-  AIRFLOW__CELERY__CELERY_RESULT_BACKEND: true
   AIRFLOW__CELERY__RESULT_BACKEND: true
   AIRFLOW__CELERY__BROKER_URL: true
   AIRFLOW__ELASTICSEARCH__HOST: true
-  AIRFLOW__ELASTICSEARCH__ELASTICSEARCH_HOST: true
   AIRFLOW__OPENSEARCH__HOST: true
 
 # Priority Classes that will be installed by charts.
@@ -428,10 +435,9 @@ priorityClasses: []
 #    * key (templated) is the name of the secret that will be created
 #    * value: an object with the standard 'data' or 'stringData' key (or both).
 #          The value associated with those keys must be a string (templated)
-extraSecrets:
-  airflow-ssh-secret:
-    data: |
-      gitSshKey: 'LS0tLS1CRUdJTiBPUEVOU1NIIFBSSVZBVEUgS0VZLS0tLS0KYjNCbGJuTnphQzFyWlhrdGRqRUFBQUFBQkc1dmJtVUFBQUFFYm05dVpRQUFBQUFBQUFBQkFBQUNGd0FBQUFkemMyZ3RjbgpOaEFBQUFBd0VBQVFBQUFnRUF2eUhZT3hXTDB5Wmc0V2lEY2FzM05IbzNpbE5YVFJYTXNrVkl3L0d2MEhXN0ordktrVW5PCktpeG5JM2Q0N1hzOFJOSVFKdjZHTTFSQVNxUDA1QUk5bFoxdFp1Q01MdEdhNk9scVhLVmlkOEh2c29zYmxtcEZaaW9XUTQKM1IzeDF5dEZ2UFFkbGl2OXB5VDBVais2eEZYR3dyM1BDTHYyVzVmL1hUSHVBRTBWdWRUSjRxaFVWMmIycmdjYWxnVWNpbwpBeTh5c0hVaUZ5VmVvSTBQaGp0cVd6S3kzZHFRbkdCdGxaVk1SNnF2dHZzNUFRQ1BVclM3VldyNmJRbXVYS2NHWVFWMzVICnkrQjVsK2t3WWt2ZnpYY0hySW9aOWcrbTRrT3FZK0xXMkZoNTBkSnE4WklTb2gzR0FwNFAzcld2ZGI0eFc4Mm5VWk5pblcKRXQxWWZBVk5rQ3RsZnNyYWFuWjBzRGl0aEZ4NVlQU284Y3RlS0JRNnZmdGozamN0Q09TZFlYcHhVNXdjdzhFbDlxbFlXNwpCRE1xeElrTHg0Mk0ybDAza29XM09CZXN5a205cHI2dHlHRHVhbm10cnczNjNCNXpZbm0rbDQrUEFNYUtzNGQrV0pPMk91CnYwVW0xbUhOeGVkWkZDUWFNVjJmdDFjTFhtT21hdk9rZmNyTDlpNktYMkpVemdORTVHMlFTWFBHTWEzdEFTLzMrbWVYZ1QKY0JUbUNmVG1HenBMcnRlTVlsSGRwNVdTWWtCbzYrQ0xPNExJcExJeEIvZlp1TGZyT05odlR1cVQzQnJGaVZ0SUNTaFVrQgoyUXdVU1NkR2pvalJFSUxIVi9uY01kTXVLUDZZc0lqYlhud2RrV2lISWFLNWFrNy9HaHN3TlIweXd4UXJYK2pleE44NGw5CmNBQUFkWTRFa0N4T0JKQXNRQUFBQUhjM05vTFhKellRQUFBZ0VBdnlIWU94V0wweVpnNFdpRGNhczNOSG8zaWxOWFRSWE0Kc2tWSXcvR3YwSFc3Sit2S2tVbk9LaXhuSTNkNDdYczhSTklRSnY2R00xUkFTcVAwNUFJOWxaMXRadUNNTHRHYTZPbHFYSwpWaWQ4SHZzb3NibG1wRlppb1dRNDNSM3gxeXRGdlBRZGxpdjlweVQwVWorNnhGWEd3cjNQQ0x2Mlc1Zi9YVEh1QUUwVnVkClRKNHFoVVYyYjJyZ2NhbGdVY2lvQXk4eXNIVWlGeVZlb0kwUGhqdHFXekt5M2RxUW5HQnRsWlZNUjZxdnR2czVBUUNQVXIKUzdWV3I2YlFtdVhLY0dZUVYzNUh5K0I1bCtrd1lrdmZ6WGNIcklvWjlnK200a09xWStMVzJGaDUwZEpxOFpJU29oM0dBcAo0UDNyV3ZkYjR4VzgyblVaTmluV0V0MVlmQVZOa0N0bGZzcmFhblowc0RpdGhGeDVZUFNvOGN0ZUtCUTZ2ZnRqM2pjdENPClNkWVhweFU1d2N3OEVsOXFsWVc3QkRNcXhJa0x4NDJNMmwwM2tvVzNPQmVzeWttOXByNnR5R0R1YW5tdHJ3MzYzQjV6WW4KbStsNCtQQU1hS3M0ZCtXSk8yT3V2MFVtMW1ITnhlZFpGQ1FhTVYyZnQxY0xYbU9tYXZPa2Zjckw5aTZLWDJKVXpnTkU1RwoyUVNYUEdNYTN0QVMvMyttZVhnVGNCVG1DZlRtR3pwTHJ0ZU1ZbEhkcDVXU1lrQm82K0NMTzRMSXBMSXhCL2ZadUxmck9OCmh2VHVxVDNCckZpVnRJQ1NoVWtCMlF3VVNTZEdqb2pSRUlMSFYvbmNNZE11S1A2WXNJamJYbndka1dpSElhSzVhazcvR2gKc3dOUjB5d3hRclgramV4Tjg0bDljQUFBQURBUUFCQUFBQ0FCMFZGVVhJUFlKZmNKWmJ4TVJpL1A5cktWQk81aFhBbjJqdwp5ZVdtdk0zSFhEYnkxZHZOa3lVdnBISHRGK1ZxdnZ6cHliTmxQeDVJVDVBTDZwTlhFKy9VQ0hXQzdWR2lheVBOZ0hXZ1pKCjg4VHpDbm9nYjlISm96QlRnNk9CanU3aWtyWHhueDdlaXJZSUZYVCtaWGpDWkgvMVNhOVdpbUhkZXVtL1V5dVFqeUc3a3cKeDkrSGRrSDF6VGorUUwydy9uK2RpdVQycmIwLzNtb25qSmtzS1Q2L05DQTF4Wk5GeU9iZDFNR0M0MEhBY0NnSzRjUC81QgpGWE9jdWxrWFpmbzhUWGhDcXNJRzRmbVBiZUZIRWtLOVBkbXZHY3dyRFlXWUxqRU1yd3cwU2pUM0EzYkdkemRidUdsbGk1Cnlqb0pNVjRZVEtnZzhUa2duSVk2VCtCdkhpSHlBQ3RMVlFxL0tDY1pKbGxGTXlLZ2FYWDdTb1ZKd3RMWmZDbmxmRFpXZVgKd2luK0dmSFl6dFcvOGtWODUzSkxpNnZhMlE5aHcvSm5nUXhzUGsyY2dpNktWT2RvQUorVXJNMUhuRG9jeTlJbExyMFV1WQp5bnY5S2lRZ1RYSzNnYVg2Y0NuUDZjRlhZNmxoTmp0TTdkWmUvR2V4UUh3YTlwbVdnNmZzOGFzMjh4TUtab2FUbU5ZVndUCmwwaG9tdjF1RldxY2lCZERJM3dRVkRGYitGdnhNV2hYMG5WeVgxS1Ayem8vdnZxMFR6dnlXdS9VVlNONTluRmJZNTNBUUYKNnRvSUxvQ0JmYWNGazhMdURwTFFJSGhEUng4VklEajBCbGJ3RHdGbVJ1Y3RtQUFSUjJvUlRpL0ZOeTE2WCtLK0hLQVhwWgp1QTNSWmZEZEFaN1RUYTh0bGhBQUFCQVFEdnA0elNYTkw5WHJ4VTIzemo2YjFSRDcrWlR3Y1NibVpRWUR1TElBYlRBZEl3ClVPOFNsSTVHRXA4UStrNWVNZTdHMmhRbzZGRUE4WVJBVjV3Qndab1gyaXRyZmhmR3hGd3pUWlduWjVLbERIYklXZXl1V1oKaWhEVzVRT0tyNE5FREN2bVd3bEFhSXhSbG9KeVRqTVZkN0svQWhqbUJ1STZmMVlxMkVnaytLN3JWWWVqMUduU0FCN2VpVApvT1lpNlpXbG5VYVRlMy9waXVtd2NOMmwvRVpYRmdsUjhvS0xyVkdGdHJTZ3pIS2R1QngvVzBVUDNqQVFLZEdHZjl3RllZCnZVYTdCQndlQ0k2RmRJQ3pzZlBRNE52ZXdKSzY2aWpTUSttLzE1b2daekZUa3N2RmxlQTFZYU9tbi8zNWNLKzZuUUNNdUkKcURvTVRLRlp2MldCTjF5bUFBQUJBUUQyeXlBVTNGeXFiMTNKNS9pS0V4WkJVbUNGTVVJQzNPODUvWHVFUzJIbDRwVU5NSwp3enUzeW5DQmdoc0UrWnMzNlIwN2ppVkszY2ttdlo2ZWVQVmw3TWhIM3NPbk1QMVRJOFpCZkZtNnZ6KzZtbXVOa21tVG5hCmJKQ2RyZldlU3kyaWJjUzIyRWxzREVJVzRGMldGSXdsUGU0b055L012cDlISWx3YkN5b2ViVW9DaGxYV01PUjRSc2JiWm0KZ3RHMkczQWw5Tm5tM2svUy91TmZnellpdTFrUUk1aDVZak5YTjdVTHhTYjJRTWptWUFMODhzT3B6cTZhdUlRaW42YUpJNQpsQkQzY3ptZW1LNVdEK3RqeGF5Vm03dGVoUEhLZ3pjcml6VWpHa0Z5UTJTdytzZFRJWWxEaWxZakVyMjFCdHQ0aTJHYW44CkJSSzFtMmJhYVo0MGlkQUFBQkFRREdReWV1NWZpOXJEdnBJMWNubnF2MURsRVRPcjhrWEZxMTdKMHdOWE1yNnEvR0xmVmYKa2ZOV1JKSFFTSlFTeUdQckRrQWRhTy8zZWJPaFUrV3R6YjIzTW40Um9CblVETm1oOXZGNE8yci91b2hkVU1xRERUZUx3MQpjNFVrTGxST1ZMTmZ3WUgrWDE3My9KZjY3RnBrUkRGOGczV093UDU1TjVwV1M1NE5UZzBZNmNQOCsyekJOTXNTUml4WDVnCnFiLzhIU2x5S2R4SCtPWmdkM0RLTytNT1lnUThuVEJTSlI2K3psOHhWd3d2OEw5TDU2cjczT3FVeG5OZlp2QVVpRm12Y24KNGRHYUsreVF6UU1yT3NIL3RBM2pYeHUvNzdwYlU3QXpjVmhuZG1rTFd1WjZRdTFNY09VZzhoUHdpcEx3WHgzLzc4Y3YzdQppTzJwVWdrQ3NsWURBQUFBSFVoMWJtY3VWbFF5TWpZd05EWkFjMmx6TG1oMWMzUXVaV1IxTG5adUFRSURCQVU9Ci0tLS0tRU5EIE9QRU5TU0ggUFJJVkFURSBLRVktLS0tLQo='
+extraSecrets: {}
+# airflow-ssh-secret is managed externally via kubectl (not by Helm).
+# Created with: kubectl create secret generic airflow-ssh-secret --from-file=gitSshKey=~/.ssh/airflow_gitsync -n stock-anomaly-detection
 # eg:
 # extraSecrets:
 #   '{{ .Release.Name }}-airflow-connections':
@@ -471,15 +477,23 @@ extraConfigMaps: {}
 # Extra env 'items' that will be added to the definition of airflow containers
 # a string is expected (templated).
 # TODO: difference from `env`? This is a templated string. Probably should template `env` and remove this.
-extraEnv: ~
-# eg:
-# extraEnv: |
-#   - name: AIRFLOW__CORE__LOAD_EXAMPLES
-#     value: 'True'
+extraEnv: |
+  - name: AIRFLOW__CORE__AUTH_MANAGER
+    value: 'airflow.providers.keycloak.auth_manager.keycloak_auth_manager.KeycloakAuthManager'
+  - name: AIRFLOW__KEYCLOAK_AUTH_MANAGER__CLIENT_ID
+    value: 'airflow'
+  - name: AIRFLOW__KEYCLOAK_AUTH_MANAGER__REALM
+    value: 'iceberg'
+  - name: AIRFLOW__KEYCLOAK_AUTH_MANAGER__SERVER_URL
+    value: 'http://openhouse-keycloak.stock-anomaly-detection.svc.cluster.local'
+  - name: _PIP_ADDITIONAL_REQUIREMENTS
+    value: 'apache-airflow-providers-keycloak'
 
 # Extra envFrom 'items' that will be added to the definition of airflow containers
 # A string is expected (templated).
-extraEnvFrom: ~
+extraEnvFrom: |
+  - secretRef:
+      name: airflow-keycloak-secret
 # eg:
 # extraEnvFrom: |
 #   - secretRef:
@@ -768,10 +782,10 @@ workers:
     #   whenScaled: Delete
 
     # Volume size for Airflow Celery worker StatefulSet
-    size: 100Gi
+    size: 30Gi
 
     # If using a custom storageClass, pass name ref to all StatefulSets here
-    storageClassName: standard-rwo
+    storageClassName: hostpath
 
     # Execute init container to chown log directory.
     # This is currently only needed in kind, due to usage
@@ -784,9 +798,6 @@ workers:
     # Detailed default security context for persistence on container level
     securityContexts:
       container: {}
-
-    # Container level lifecycle hooks
-    containerLifecycleHooks: {}
 
   # Kerberos sidecar configuration for Airflow Celery workers and pods created with pod-template-file
   kerberosSidecar:
@@ -1162,31 +1173,16 @@ scheduler:
 
 # Airflow create user job settings
 createUserJob:
-  # Limit the lifetime of the job object after it finished execution.
+  # Disabled: `airflow users` CLI was removed in Airflow 3.x.
+  # Users are managed via Keycloak auth manager — this job is not needed.
+  # Chart 1.21.0 default args still reference `airflow users create` (chart bug),
+  # so this must stay disabled to avoid CrashLoopBackOff on every install.
+  enabled: false
+  useHelmHooks: false
+  applyCustomEnv: false
   ttlSecondsAfterFinished: 300
-  # Command to use when running the create user job (templated).
   command: ~
-  # Args to use when running the create user job (templated).
-  args:
-    - "bash"
-    - "-c"
-    # The format below is necessary to get `helm lint` happy
-    - |-
-      exec \
-      airflow {{ semverCompare ">=2.0.0" .Values.airflowVersion | ternary "users create" "create_user" }} "$@"
-    - --
-    - "-r"
-    - "{{ .Values.webserver.defaultUser.role }}"
-    - "-u"
-    - "{{ .Values.webserver.defaultUser.username }}"
-    - "-e"
-    - "{{ .Values.webserver.defaultUser.email }}"
-    - "-f"
-    - "{{ .Values.webserver.defaultUser.firstName }}"
-    - "-l"
-    - "{{ .Values.webserver.defaultUser.lastName }}"
-    - "-p"
-    - "{{ .Values.webserver.defaultUser.password }}"
+  args: []
 
   # Annotations on the create user job pod
   annotations: {}
@@ -1250,10 +1246,6 @@ createUserJob:
   tolerations: []
   topologySpreadConstraints: []
   priorityClassName: ~
-  # In case you need to disable the helm hooks that create the jobs after install.
-  # Disable this if you are using ArgoCD for example
-  useHelmHooks: true
-  applyCustomEnv: true
 
   env: []
 
@@ -1653,7 +1645,7 @@ webserver:
 
   # Create initial user.
   defaultUser:
-    enabled: true
+    enabled: false
     role: Admin
     username: admin
     email: admin@example.com
@@ -1686,14 +1678,6 @@ webserver:
   # your image instead or specify a configmap containing the
   # webserver_config.py.
   webserverConfig: ~
-  # webserverConfig: |
-  #   from airflow import configuration as conf
-
-  #   # The SQLAlchemy connection string.
-  #   SQLALCHEMY_DATABASE_URI = conf.get('database', 'SQL_ALCHEMY_CONN')
-
-  #   # Flask-WTF flag for CSRF
-  #   CSRF_ENABLED = True
   webserverConfigConfigMapName: ~
 
   service:
@@ -1824,9 +1808,9 @@ triggerer:
     # This policy determines whether PVCs should be deleted when StatefulSet is scaled down or removed.
     persistentVolumeClaimRetentionPolicy: ~
     # Volume size for triggerer StatefulSet
-    size: 100Gi
+    size: 30Gi
     # If using a custom storageClass, pass name ref to all statefulSets here
-    storageClassName: standard-rwo
+    storageClassName: hostpath
     # Execute init container to chown log directory.
     # This is currently only needed in kind, due to usage
     # of local-path provisioner.
@@ -2615,7 +2599,7 @@ redis:
     # Volume size for worker StatefulSet
     size: 1Gi
     # If using a custom storageClass, pass name ref to all statefulSets here
-    storageClassName: standard-rwo
+    storageClassName: hostpath
     # Annotations to add to redis volumes
     annotations: {}
     # the name of an existing PVC to use
@@ -2831,7 +2815,7 @@ postgresql:
   primary:
     persistence:
       enabled: true
-      storageClass: premium-rwo
+      storageClass: hostpath
       size: 8Gi
 
 # Config settings to go into the mounted airflow.cfg
@@ -2958,7 +2942,7 @@ dags:
     # Volume size for dags
     size: 1Gi
     # If using a custom storageClass, pass name here
-    storageClassName: standard-rwo
+    storageClassName: hostpath
     # access mode of the persistent volume
     accessMode: ReadWriteOnce
     ## the name of an existing PVC to use
@@ -2976,7 +2960,7 @@ dags:
     rev: HEAD
     # The git revision (branch, tag, or hash) to check out, v4 only
     # FIXED: Comment out ref to avoid conflict with branch
-    # ref: v2-2-stable  # ❌ This conflicts with branch: main
+    # ref: v2-2-stable  # This conflicts with branch: main
     depth: 1
     # the number of consecutive failures allowed before aborting
     maxFailures: 0
@@ -3089,10 +3073,10 @@ logs:
     # Enable persistent volume for storing logs
     enabled: false
     # Volume size for logs
-    size: 100Gi
+    size: 30Gi
     # Annotations for the logs PVC
     annotations: {}
     # If using a custom storageClass, pass name here
-    storageClassName: standard-rwo
+    storageClassName: hostpath
     ## the name of an existing PVC to use
     existingClaim:

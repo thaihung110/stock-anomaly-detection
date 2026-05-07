@@ -806,7 +806,7 @@ persistence:
   ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
   ##   GKE, AWS & OpenStack)
   ##
-  storageClass: "standard-rwo"
+  storageClass: "hostpath"
   ## @param persistence.mountPath Data volume mount path
   ##
   mountPath: /bitnami/minio/data

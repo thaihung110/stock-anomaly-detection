@@ -17,7 +17,7 @@ global:
   ##   - myRegistryKeySecretName
   ##
   imagePullSecrets: []
-  defaultStorageClass: "standard-rwo"
+  defaultStorageClass: "hostpath"
   ## Security parameters
   ##
   security:
@@ -1122,7 +1122,7 @@ controller:
     ## If undefined (the default) or set to null, no storageClassName spec is
     ## set, choosing the default provisioner.
     ##
-    storageClass: "standard-rwo"
+    storageClass: "hostpath"
     ## @param controller.persistence.accessModes Persistent Volume Access Modes
     ##
     accessModes:
@@ -1162,7 +1162,7 @@ controller:
     ## If undefined (the default) or set to null, no storageClassName spec is
     ## set, choosing the default provisioner.
     ##
-    storageClass: "standard-rwo"
+    storageClass: "hostpath"
     ## @param controller.logPersistence.accessModes Persistent Volume Access Modes
     ##
     accessModes:
@@ -1588,7 +1588,7 @@ broker:
     ## If undefined (the default) or set to null, no storageClassName spec is
     ## set, choosing the default provisioner.
     ##
-    storageClass: "standard-rwo"
+    storageClass: "hostpath"
     ## @param broker.persistence.accessModes Persistent Volume Access Modes
     ##
     accessModes:
@@ -1628,7 +1628,7 @@ broker:
     ## If undefined (the default) or set to null, no storageClassName spec is
     ## set, choosing the default provisioner.
     ##
-    storageClass: "standard-rwo"
+    storageClass: "hostpath"
     ## @param broker.logPersistence.accessModes Persistent Volume Access Modes
     ##
     accessModes:

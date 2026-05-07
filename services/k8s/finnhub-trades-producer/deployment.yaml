@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: stock-anomaly-detection
+  name: finnhub-trades-producer
+  labels:
+    app: finnhub-trades-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: finnhub-trades-producer
+  template:
+    metadata:
+      labels:
+        app: finnhub-trades-producer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        - name: wait-for-kafka
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z openhouse-kafka 9092; do
+                echo "waiting for kafka..."; sleep 3
+              done
+              echo "kafka is ready"
+      containers:
+        - name: finnhub-trades-producer
+          image: hungvt0110/finnhub-trades-producer:v0.4
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: metrics
+          env:
+            - name: FINNHUB_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: finnhub-trades-producer-secrets
+                  key: FINNHUB_API_KEY
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "openhouse-kafka:9092"
+            - name: KAFKA_TOPIC
+              value: "raw.stock.trades"
+            - name: METRICS_PORT
+              value: "8000"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10

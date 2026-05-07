@@ -1,0 +1,45 @@
+# ── Stage 1: Compile ──────────────────────────────────────────────────────────
+FROM eclipse-temurin:17.0.16_8-jdk-noble AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    curl -fL "https://github.com/sbt/sbt/releases/download/v1.9.9/sbt-1.9.9.tgz" | tar xz -C /usr/local && \
+    ln -s /usr/local/sbt/bin/sbt /usr/local/bin/sbt && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY build.sbt .
+COPY project/ project/
+RUN sbt update
+
+COPY src/ src/
+RUN sbt assembly
+
+# ── Stage 2: Spark file source ─────────────────────────────────────────────────
+FROM apache/spark:3.5.3-scala2.12-java17-ubuntu AS spark-files
+
+# ── Stage 3: Final runtime ─────────────────────────────────────────────────────
+FROM amazoncorretto:17-alpine3.21
+
+RUN apk add --no-cache bash tini procps libstdc++ && \
+    ln -s /sbin/tini /usr/bin/tini && \
+    addgroup -S -g 185 spark && \
+    adduser -S -u 185 -G spark -H -s /bin/bash spark
+
+COPY --from=spark-files /opt/spark /opt/spark
+COPY --from=spark-files /opt/entrypoint.sh /opt/entrypoint.sh
+
+RUN chmod +x /opt/entrypoint.sh && \
+    mkdir -p /opt/spark/work-dir && \
+    chmod g+w /opt/spark/work-dir && \
+    chown -R spark:spark /opt/spark
+
+ENV SPARK_HOME=/opt/spark
+ENV PATH="${SPARK_HOME}/bin:${SPARK_HOME}/sbin:${PATH}"
+
+COPY --from=builder /build/target/scala-2.12/rule-engine-context-builder-assembly-1.0.0.jar \
+     /opt/spark/jars/rule-engine-context-builder-assembly-1.0.0.jar
+
+WORKDIR /opt/spark/work-dir
+USER spark
+ENTRYPOINT ["/opt/entrypoint.sh"]
