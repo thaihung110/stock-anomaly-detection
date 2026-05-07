@@ -2,9 +2,9 @@ package com.stockanomalydetection.tradesohlcv.pipeline
 
 import com.stockanomalydetection.tradesohlcv.config.AppConfig
 import com.stockanomalydetection.tradesohlcv.schema.TradeSchema
-import org.apache.spark.sql.functions.{col, count, first, from_json, last, max, min, sum, window}
+import org.apache.spark.sql.functions.{col, count, from_json, max, max_by, min, min_by, sum, window}
 import org.apache.spark.sql.streaming.{StreamingQuery, Trigger}
-import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, TimestampType}
+import org.apache.spark.sql.types.{DateType, DoubleType, IntegerType, StringType, TimestampType}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
 object TradesOhlcvPipeline {
@@ -13,8 +13,9 @@ object TradesOhlcvPipeline {
       .format("kafka")
       .option("kafka.bootstrap.servers", config.kafkaBootstrapServers)
       .option("subscribe", config.inputTopic)
-      .option("startingOffsets", "latest")
+      .option("startingOffsets", "earliest")
       .option("failOnDataLoss", "false")
+      .option("maxOffsetsPerTrigger", config.maxOffsetsPerTrigger)
       .load()
 
   def transform(rawStream: DataFrame): DataFrame = {
@@ -27,10 +28,10 @@ object TradesOhlcvPipeline {
     parsed
       .groupBy(col("symbol"), window(col("bar_ts"), "1 minute"))
       .agg(
-        first("price").as("open"),
+        min_by(col("price"), col("timestamp_ms")).as("open"),
         max("price").as("high"),
         min("price").as("low"),
-        last("price").as("close"),
+        max_by(col("price"), col("timestamp_ms")).as("close"),
         sum("volume").as("volume"),
         count("*").cast(IntegerType).as("trade_count"),
         (sum(col("price") * col("volume").cast(DoubleType)) /
@@ -45,7 +46,8 @@ object TradesOhlcvPipeline {
         col("close"),
         col("volume"),
         col("trade_count"),
-        col("vwap")
+        col("vwap"),
+        col("window.start").cast(DateType).as("bar_date")
       )
   }
 
@@ -54,6 +56,9 @@ object TradesOhlcvPipeline {
       .format("iceberg")
       .option("path", config.outputTable)
       .option("checkpointLocation", config.checkpointLocation)
+      .option("distribution-mode", config.writeDistributionMode)
+      .option("target-file-size-bytes", config.targetFileSizeBytes)
+      .option("fanout-enabled", config.fanoutEnabled)
       .outputMode("append")
       .trigger(Trigger.ProcessingTime(config.triggerInterval))
       .start()

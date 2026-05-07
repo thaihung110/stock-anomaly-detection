@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "yfinance-quotes-producer"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "yfinance>=0.2.50",
+    "aiokafka>=0.11",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "prometheus-client>=0.20",
+    "structlog>=24.0",
+]
+
+[project.scripts]
+yfinance-quotes-producer = "yfinance_quotes_producer.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yfinance_quotes_producer"]

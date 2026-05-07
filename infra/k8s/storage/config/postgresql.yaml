@@ -17,8 +17,8 @@ global:
   ## @param global.defaultStorageClass Global default StorageClass for Persistent Volume(s)
   ## @param global.storageClass DEPRECATED: use global.defaultStorageClass instead
   ##
-  defaultStorageClass: "premium-rwo"
-  storageClass: "premium-rwo"
+  defaultStorageClass: "hostpath"
+  storageClass: "hostpath"
   ## Security parameters
   ##
   security:
@@ -825,7 +825,7 @@ primary:
     ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
     ##   GKE, AWS & OpenStack)
     ##
-    storageClass: "premium-rwo"
+    storageClass: "hostpath"
     ## @param primary.persistence.accessModes PVC Access Mode for PostgreSQL volume
     ##
     accessModes:
@@ -1283,7 +1283,7 @@ readReplicas:
     ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
     ##   GKE, AWS & OpenStack)
     ##
-    storageClass: "premium-rwo"
+    storageClass: "hostpath"
     ## @param readReplicas.persistence.accessModes PVC Access Mode for PostgreSQL volume
     ##
     accessModes:
@@ -1438,7 +1438,7 @@ backup:
       ## If undefined (the default) or set to null, no storageClassName spec is
       ## set, choosing the default provisioner.
       ##
-      storageClass: "standard-rwo"
+      storageClass: "hostpath"
       ## @param backup.cronjob.storage.accessModes PV Access Mode
       ##
       accessModes:

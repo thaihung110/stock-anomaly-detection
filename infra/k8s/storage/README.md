@@ -122,9 +122,10 @@ Một số chú ý khi config:
 - bỏ `KC_HOSTNAME` trong helm chart, comment KC_HOSTNAME trong configmap-env-vars.yaml.
 - thêm `proxyHeaders: "xforwarded"` trong file config keycloak.yaml.
 
-#### Keycloak Configuration
+## Keycloak Configuration
 
 Keycloak được sử dụng để xác thực cho:
+
 - **Gravitino Web UI**: Authorization Code + PKCE flow (browser-based login)
 - **Spark batch jobs**: Client Credentials flow
 
@@ -140,6 +141,7 @@ Create a **public** client for Gravitino UI (Authorization Code + PKCE):
 - Client authentication: **OFF** (public client, no secret)
 
 Tab **Settings**:
+
 - Valid redirect URIs: `https://openhouse.gravitino.test/ui/oauth/callback`
 - Web origins: `https://openhouse.gravitino.test`
 
@@ -152,12 +154,14 @@ Create a client scope named `gravitino`:
 - Include in token scope: **ON**
 
 Then add an Audience Mapper to this scope:
+
 - Go to scope `gravitino` → **Mappers** → **Add mapper** → **By configuration** → **Audience**
 - Mapper name: `gravitino-audience`
 - Included Client Audience: `gravitino`
 - Add to access token: **ON**
 
 Then assign scope to client `gravitino`:
+
 - Go to Client `gravitino` → **Client Scopes** → **Add client scope**
 - Select: `gravitino`
 - Assigned type: **Optional**
@@ -197,7 +201,7 @@ Go to Users → Create new user:
 - Set password: `admin`
 - Temporary: **OFF**
 
-### Cấu hình ingress khi chạy trên wsl
+### Cấu hình ingress
 
 ---
 
@@ -207,8 +211,61 @@ Tải Ingress-NGINX controller:
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.13.0/deploy/static/provider/cloud/deploy.yaml
 ```
 
-Chạy minikube tunnel ở một terminal khác:
+## Cấu hình Iceberg catalog trên Gravitino UI (PostgreSQL + MinIO)
 
-```bash
-sudo -E minikube tunnel
+### 1. Tạo database backend cho Iceberg REST trong PostgreSQL
+
+Kết nối vào PostgreSQL (ví dụ bằng `psql` với user `postgres`) và chạy:
+
+```sql
+-- Tạo database dành riêng cho Iceberg REST catalog
+CREATE DATABASE iceberg_catalog_db;
+
+-- Tạo user riêng cho catalog
+CREATE USER iceberg WITH ENCRYPTED PASSWORD 'iceberg';
+
+-- Gán quyền sở hữu DB cho user iceberg
+ALTER DATABASE iceberg_catalog_db OWNER TO iceberg;
 ```
+
+Khi đó JDBC URL kết nối là:
+
+```text
+jdbc:postgresql://openhouse-postgresql-primary:5432/iceberg_catalog_db
+```
+
+### 2. Tạo Iceberg catalog trên Gravitino UI
+
+1. Đăng nhập Gravitino UI.
+2. Vào metalake mong muốn → tab **Catalogs** → **Create Catalog**.
+3. Điền:
+   - **Name**: `iceberg_minio` (hoặc tên bạn muốn)
+   - **Type**: `Relational`
+   - **Provider**: `Apache Iceberg`
+
+4. Ở phần **Properties**, thêm các cặp Key/Value sau:
+
+```text
+catalog-backend      = jdbc
+uri                  = jdbc:postgresql://openhouse-postgresql-primary:5432/iceberg_catalog_db
+warehouse            = s3://bronze/warehouse
+
+jdbc-driver          = org.postgresql.Driver
+jdbc-user            = iceberg
+jdbc-password        = iceberg
+authentication.type  = simple
+
+io-impl              = org.apache.iceberg.aws.s3.S3FileIO
+s3-endpoint          = http://openhouse-minio:9000
+s3-region            = us-east-1
+s3-path-style-access = true
+s3-access-key-id     = admin
+s3-secret-access-key = admin123
+```
+
+5. Nhấn **Create** để tạo catalog.
+
+### 3. Ghi chú
+
+- `warehouse` có thể đổi thành `s3://silver/warehouse` nếu bạn muốn dùng bucket `silver`.
+- Đảm bảo các bucket `bronze`/`silver` đã tồn tại trên MinIO và user `admin` có quyền đọc/ghi.

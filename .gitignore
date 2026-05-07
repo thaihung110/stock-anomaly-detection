@@ -38,3 +38,14 @@ spark-application/**/project/target/
 # IDE + tooling caches
 .cache/
 tmp/
+
+
+.cgcignore
+mcp.json
+infra/k8s/storage/tls/*
+
+__pycache__/
+
+services/finnhub-trades-producer/k8s/finnhub_secret.yaml
+
+spark-application/k8s/spark-app-secrets.yaml
