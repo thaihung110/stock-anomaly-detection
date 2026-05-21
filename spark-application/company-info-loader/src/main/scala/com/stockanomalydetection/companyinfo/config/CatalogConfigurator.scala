@@ -36,10 +36,10 @@ object CatalogConfigurator {
 
   def ensureTableExists(spark: SparkSession): Unit = {
     try {
-      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_catalog.bronze")
+      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_catalog.raw")
     } catch {
       case e: Exception =>
-        throw new RuntimeException(s"Failed to create namespace gravitino_catalog.bronze: ${e.getMessage}", e)
+        throw new RuntimeException(s"Failed to create namespace gravitino_catalog.raw: ${e.getMessage}", e)
     }
 
     // Unpartitioned — 50 rows is a tiny table; partitioning would add unnecessary overhead.
@@ -47,7 +47,7 @@ object CatalogConfigurator {
     // Fields marked NULL are not available on Finnhub free tier.
     try {
       spark.sql("""
-      CREATE TABLE IF NOT EXISTS gravitino_catalog.bronze.raw_company_info (
+      CREATE TABLE IF NOT EXISTS gravitino_catalog.raw.raw_company_info (
         symbol              STRING    NOT NULL COMMENT 'Ticker symbol',
         short_name          STRING    COMMENT 'Company name — Finnhub profile2.name',
         long_name           STRING    COMMENT 'Same as short_name (Finnhub has one name field)',

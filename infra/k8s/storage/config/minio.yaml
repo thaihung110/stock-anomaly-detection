@@ -369,9 +369,11 @@ resourcesPreset: "none"
 ##
 resources:
   requests:
+    cpu: 100m
     memory: 512Mi
   limits:
-    memory: 5Gi
+    cpu: 500m
+    memory: 2Gi
 ## Configure extra options for liveness probe
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-probes/#configure-probes
 ## @param livenessProbe.enabled Enable livenessProbe

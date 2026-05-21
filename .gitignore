@@ -49,3 +49,11 @@ __pycache__/
 services/finnhub-trades-producer/k8s/finnhub_secret.yaml
 
 spark-application/k8s/spark-app-secrets.yaml
+
+docs/plan-next-tasks-2026-05-14.md
+docs/progress-2026-05-14.md
+docs/progress-2026-05-17.md
+docs/deployment-guide.md
+services/rule-engine/uv.lock
+.mcp.json
+pyrightconfig.json

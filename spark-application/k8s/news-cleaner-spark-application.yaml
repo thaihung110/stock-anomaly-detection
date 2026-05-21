@@ -6,8 +6,9 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "hungvt0110/news-cleaner:v0.2"
+  image: "hungvt0110/news-cleaner:v0.3"
   imagePullPolicy: Always
+  timeToLiveSeconds: 3600
   mainClass: com.stockanomalydetection.newscleaner.NewsCleanerMain
   mainApplicationFile: "local:///opt/spark/jars/news-cleaner-assembly-1.0.0.jar"
   sparkVersion: "3.5.1"
@@ -55,7 +56,7 @@ spec:
 
   driver:
     cores: 1
-    memory: "1g"
+    memory: "512m"
     memoryOverhead: "256m"
     serviceAccount: spark
     env:
@@ -107,7 +108,7 @@ spec:
   executor:
     instances: 1
     cores: 1
-    memory: "1g"
+    memory: "512m"
     memoryOverhead: "256m"
     env:
       - name: GRAVITINO_URI

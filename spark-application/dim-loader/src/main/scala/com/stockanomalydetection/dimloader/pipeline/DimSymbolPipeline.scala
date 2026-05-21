@@ -14,11 +14,15 @@ object DimSymbolPipeline {
   )
 
   def run(spark: SparkSession, inputTable: String, outputTable: String): Unit = {
-    // Latest snapshot per symbol from bronze (pick most recent ingested_at)
+    // Latest snapshot per symbol from raw (pick most recent fetched_at)
+    // Rename raw_company_info columns to match dim_symbol schema
     val incoming = spark.table(inputTable)
+      .withColumnRenamed("short_name",         "company_name")
+      .withColumnRenamed("fifty_two_week_high", "week_52_high")
+      .withColumnRenamed("fifty_two_week_low",  "week_52_low")
       .withColumn("_rn",
         row_number().over(
-          Window.partitionBy("symbol").orderBy(col("ingested_at").desc)))
+          Window.partitionBy("symbol").orderBy(col("fetched_at").desc)))
       .filter(col("_rn") === 1)
       .drop("_rn")
       .select((Seq("symbol") ++ scdFields).map(col): _*)
@@ -33,9 +37,11 @@ object DimSymbolPipeline {
 
     val joined = incoming.join(existing, incoming("symbol") === existing("ex_symbol"), "left_outer")
 
-    // Detect which symbols have changed SCD fields
+    // Detect which symbols have changed SCD fields.
+    // Use null-safe inequality (NOT <=>): handles cases where either side is null,
+    // e.g. market_cap transitioning null → value would be missed by plain =!=.
     val changeExpr = scdFields
-      .map(f => incoming(f) =!= existing(s"ex_$f"))
+      .map(f => !(incoming(f) <=> existing(s"ex_$f")))
       .reduce(_ || _)
 
     val changed = joined
@@ -72,7 +78,7 @@ object DimSymbolPipeline {
     val toInsertCount = changedCount + newCount
 
     if (toInsertCount > 0) {
-      val maxKey = spark.sql(s"SELECT COALESCE(MAX(symbol_key), 0) FROM $outputTable")
+      val maxKey = spark.sql(s"SELECT CAST(COALESCE(MAX(symbol_key), 0) AS BIGINT) FROM $outputTable")
         .collect()(0).getLong(0)
 
       val withKeys = toInsert

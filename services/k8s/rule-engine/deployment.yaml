@@ -1,0 +1,99 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rule-engine-config
+  namespace: stock-anomaly-detection
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "openhouse-kafka:9092"
+  KAFKA_INPUT_TOPIC: "raw.stock.quotes"
+  KAFKA_OUTPUT_TOPIC: "alerts.raw"
+  ICEBERG_CATALOG_URI: "http://openhouse-gravitino:9001/iceberg/"
+  ICEBERG_OAUTH2_SERVER_URI: "http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token"
+  ICEBERG_CATALOG_NAME: "stock_catalog"
+  ICEBERG_WAREHOUSE: "gold"
+  ICEBERG_OAUTH2_SCOPE: "gravitino"
+  RULE_ENGINE_CONTEXT_TABLE: "gold.rule_engine_context"
+  S3_ENDPOINT: "http://openhouse-minio:9000"
+  S3_REGION: "us-east-1"
+  S3_PATH_STYLE_ACCESS: "true"
+  PG_HOST: "openhouse-postgresql-primary"
+  PG_PORT: "5432"
+  PG_DATABASE: "stock_anomaly"
+  PG_USER: "stock_user"
+  HTTP_PORT: "8080"
+  METRICS_PORT: "8000"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rule-engine
+  namespace: stock-anomaly-detection
+  labels:
+    app: rule-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rule-engine
+  template:
+    metadata:
+      labels:
+        app: rule-engine
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: rule-engine
+          image: hungvt0110/rule-engine:v0.5
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: rule-engine-config
+            - secretRef:
+                name: rule-engine-secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rule-engine
+  namespace: stock-anomaly-detection
+spec:
+  selector:
+    app: rule-engine
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+# Secret 'rule-engine-secret' must be created manually before deploying:
+#   kubectl create secret generic rule-engine-secret \
+#     -n stock-anomaly-detection \
+#     --from-literal=ICEBERG_OAUTH2_CREDENTIAL="<client_id>:<client_secret>" \
+#     --from-literal=PG_PASSWORD="<password>" \
+#     --from-literal=S3_ACCESS_KEY_ID="<minio_access_key>" \
+#     --from-literal=S3_SECRET_ACCESS_KEY="<minio_secret_key>"
