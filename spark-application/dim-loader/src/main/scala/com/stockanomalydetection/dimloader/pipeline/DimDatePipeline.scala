@@ -2,7 +2,7 @@ package com.stockanomalydetection.dimloader.pipeline
 
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{count => sparkCount, _}
 import org.apache.spark.sql.types.IntegerType
 
 import java.sql.Date
@@ -43,7 +43,7 @@ object DimDatePipeline {
         !col("is_weekend") && !col("is_us_market_holiday"))
       .withColumn("trading_day_number",
         when(col("is_trading_day"),
-          count(when(col("is_trading_day"), lit(1)))
+          sparkCount(when(col("is_trading_day"), lit(1)))
             .over(Window.partitionBy("year")
               .orderBy("full_date")
               .rowsBetween(Window.unboundedPreceding, 0))

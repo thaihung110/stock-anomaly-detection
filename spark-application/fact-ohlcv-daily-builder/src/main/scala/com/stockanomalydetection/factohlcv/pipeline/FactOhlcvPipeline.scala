@@ -30,8 +30,10 @@ object FactOhlcvPipeline {
   // UDF: given ordered close prices, return parallel arrays for macd_line / macd_signal / macd_histogram.
   // The function returns a struct with three double arrays; each is later zipped back onto rows.
   private val macdUdf = udf { (closes: Seq[Double]) =>
-    if (closes == null || closes.length < 26) {
-      val nulls = closes.map(_ => null.asInstanceOf[Double])
+    if (closes == null || closes.isEmpty) {
+      (Seq.empty[Double], Seq.empty[Double], Seq.empty[Double])
+    } else if (closes.length < 26) {
+      val nulls = Seq.fill(closes.length)(null.asInstanceOf[Double])
       (nulls, nulls, nulls)
     } else {
       val arr     = closes.toArray
@@ -193,14 +195,19 @@ object FactOhlcvPipeline {
       .withColumn("_macd_signal_arr", col("_macd_result._2"))
       .withColumn("_macd_histo_arr",  col("_macd_result._3"))
       // Explode arrays with index to rejoin on (symbol_key, _row_num)
-      .withColumn("_idx_macd",
-        posexplode(col("_macd_line_arr")))
+      // posexplode returns two columns (pos, col) — must use select, not withColumn
       .select(
         col("symbol_key"),
-        (col("_idx_macd.pos") + lit(1)).alias("_row_num"),  // posexplode is 0-based
-        col("_idx_macd.col").alias("macd_line"),
-        element_at(col("_macd_signal_arr"), col("_idx_macd.pos") + lit(1)).alias("macd_signal"),
-        element_at(col("_macd_histo_arr"),  col("_idx_macd.pos") + lit(1)).alias("macd_histogram")
+        col("_macd_signal_arr"),
+        col("_macd_histo_arr"),
+        posexplode(col("_macd_line_arr")).as(Seq("_pos", "macd_line"))
+      )
+      .select(
+        col("symbol_key"),
+        (col("_pos") + lit(1)).alias("_row_num"),  // posexplode is 0-based; row_number is 1-based
+        col("macd_line"),
+        element_at(col("_macd_signal_arr"), col("_pos") + lit(1)).alias("macd_signal"),
+        element_at(col("_macd_histo_arr"),  col("_pos") + lit(1)).alias("macd_histogram")
       )
 
     val withMacd = withRowNum

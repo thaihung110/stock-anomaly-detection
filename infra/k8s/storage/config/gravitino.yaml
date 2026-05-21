@@ -684,12 +684,17 @@ envFrom: []
 
 ## Resource limits & requests
 ##
-resources: {}
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 2Gi
 #   requests:
-#     cpu: 1000m
-#     memory: 2Gi
+#     cpu: 1000m (original commented suggestion)
 #   limits:
-#     cpu: 2000m
+#     cpu: 2000m (original commented suggestion)
 #     memory: 3Gi
 
 initResources: {}

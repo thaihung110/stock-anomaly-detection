@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: airflow-spark-operator
+  namespace: stock-anomaly-detection
+rules:
+  - apiGroups: ["sparkoperator.k8s.io"]
+    resources: ["sparkapplications"]
+    verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: airflow-spark-operator
+  namespace: stock-anomaly-detection
+subjects:
+  - kind: ServiceAccount
+    name: openhouse-airflow-worker
+    namespace: stock-anomaly-detection
+  - kind: ServiceAccount
+    name: openhouse-airflow-triggerer
+    namespace: stock-anomaly-detection
+roleRef:
+  kind: Role
+  name: airflow-spark-operator
+  apiGroup: rbac.authorization.k8s.io

@@ -27,9 +27,18 @@ object RuleEngineContextPipeline {
     Date.valueOf(LocalDate.parse(keyStr, ymdKeyFmt))
   }
 
-  def readFact(spark: SparkSession, inputTable: String): DataFrame = {
-    logger.info(s"Reading fact table (full history for rolling windows): $inputTable")
-    spark.table(inputTable)
+  /** Lookback in calendar days: safely covers 20+ trading days even with holidays. */
+  private val LookbackCalendarDays = 60
+
+  private def cutoffDateKey(asOfDateKey: Int): Int = {
+    val d = LocalDate.parse(f"$asOfDateKey%08d", ymdKeyFmt).minusDays(LookbackCalendarDays)
+    ymdKeyFmt.format(d).toInt
+  }
+
+  def readFact(spark: SparkSession, inputTable: String, asOfDateKey: Int): DataFrame = {
+    val cutoff = cutoffDateKey(asOfDateKey)
+    logger.info(s"Reading fact table with date_key >= $cutoff (60-day lookback): $inputTable")
+    spark.table(inputTable).filter(col("date_key") >= lit(cutoff))
   }
 
   def readDimSymbol(spark: SparkSession, dimSymbolTable: String): DataFrame = {
@@ -84,27 +93,42 @@ object RuleEngineContextPipeline {
   }
 
   def overwritePartition(df: DataFrame, outputTable: String): Unit = {
-    val cached   = df.cache()
-    val rowCount = cached.count()
-    logger.info(s"Overwriting partition in $outputTable — $rowCount rows")
+    val cached = df.cache()
     try {
+      val rowCount = cached.count()
+      if (rowCount == 0L) {
+        throw new RuntimeException(
+          s"overwritePartitions to $outputTable aborted: 0 rows produced. " +
+          "Check that fact_ohlcv_daily has data for the target date_key and dim_symbol is populated."
+        )
+      }
+      logger.info(s"Overwriting partition in $outputTable — $rowCount rows")
       cached.writeTo(outputTable).overwritePartitions()
+      logger.info(s"Partition write complete — $rowCount rows")
     } catch {
+      case e: RuntimeException => throw e
       case e: Exception =>
-        cached.unpersist()
         throw new RuntimeException(s"overwritePartitions to $outputTable failed: ${e.getMessage}", e)
+    } finally {
+      cached.unpersist()
     }
-    cached.unpersist()
-    logger.info(s"Partition write complete — $rowCount rows")
   }
 
   def run(spark: SparkSession, cfg: AppConfig): Unit = {
     val dateKey = cfg.asOfDateKey.getOrElse(defaultAsOfDateKey())
     logger.info(s"Building rule_engine_context for as_of_date_key=$dateKey (UTC)")
 
-    val fact   = readFact(spark, cfg.inputTable)
     val dimSym = readDimSymbol(spark, cfg.dimSymbolTable)
+    val activeSymbolCount = dimSym.count()
+    if (activeSymbolCount == 0L) {
+      throw new RuntimeException(
+        s"dim_symbol table '${cfg.dimSymbolTable}' has no active records. " +
+        "Run spark_batch_weekly_dimension_pipeline (company_info_loader → dim_loader) first."
+      )
+    }
+    logger.info(s"dim_symbol has $activeSymbolCount active symbols")
 
+    val fact   = readFact(spark, cfg.inputTable, dateKey)
     val sliced = withSymbolAndRolling(fact, dimSym, dateKey)
     val out    = toOutputColumns(sliced, dateKey)
 

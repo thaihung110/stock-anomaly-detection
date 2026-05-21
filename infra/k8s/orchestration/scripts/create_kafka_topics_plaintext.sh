@@ -25,12 +25,14 @@ TOPIC_PARTITIONS_DEFAULT="${TOPIC_PARTITIONS_DEFAULT:-3}"
 REPLICATION_FACTOR_DEFAULT="${REPLICATION_FACTOR:-1}"
 RETENTION_MS_DEFAULT="${RETENTION_MS_DEFAULT:-604800000}"
 
-# Topics defined by Plan V3.3:
-# - raw.stock.quotes
-# - raw.stock.trades
-# - raw.stock.news
-# - alerts.raw
-# - alerts.confirmed
+# Topics V3.3 — tất cả services trong namespace stock-anomaly-detection:
+#
+# Producer → Topic → Consumer
+# yfinance-quotes-producer   → raw.stock.quotes  → Rule Engine
+# finnhub-trades-producer    → raw.stock.trades  → trades-ohlcv-stream (Spark)
+# finnhub-news-producer      → raw.stock.news    → news-ingest-stream (Spark)
+# Rule Engine                → alerts.raw        → Alert Service
+# LLM Agent (future)         → alerts.confirmed  → Alert Service (future)
 V33_TOPICS=(
   "raw.stock.quotes"
   "raw.stock.trades"

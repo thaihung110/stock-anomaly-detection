@@ -1,0 +1,94 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: telegram-bot-config
+  namespace: stock-anomaly-detection
+data:
+  WEBHOOK_HOST: "https://REPLACE_WITH_INGRESS_HOST"  # replace before deploy
+  WEBHOOK_PATH: "/webhook"
+  APP_PORT: "8080"
+  PG_HOST: "openhouse-postgresql"
+  PG_PORT: "5432"
+  PG_DATABASE: "stock_anomaly"
+  PG_USER: "stock_user"
+  RULE_ENGINE_URL: "http://rule-engine:8080"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telegram-bot
+  namespace: stock-anomaly-detection
+  labels:
+    app: telegram-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telegram-bot
+  template:
+    metadata:
+      labels:
+        app: telegram-bot
+    spec:
+      containers:
+        - name: telegram-bot
+          image: hungvt0110/telegram-bot:v0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: telegram-bot-config
+            - secretRef:
+                name: telegram-bot-secret
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telegram-bot
+  namespace: stock-anomaly-detection
+spec:
+  selector:
+    app: telegram-bot
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: telegram-bot-ingress
+  namespace: stock-anomaly-detection
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /webhook
+            pathType: Prefix
+            backend:
+              service:
+                name: telegram-bot
+                port:
+                  number: 8080
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: telegram-bot-secret
+  namespace: stock-anomaly-detection
+type: Opaque
+stringData:
+  TELEGRAM_BOT_TOKEN: "REPLACE_ME"  # replace before deploy
+  PG_PASSWORD: "REPLACE_ME"         # replace before deploy

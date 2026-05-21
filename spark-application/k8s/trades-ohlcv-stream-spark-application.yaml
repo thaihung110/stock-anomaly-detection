@@ -63,7 +63,7 @@ spec:
 
   restartPolicy:
     type: OnFailure
-    onFailureRetries: 3
+    onFailureRetries: 10
     onFailureRetryInterval: 10
 
   driver:

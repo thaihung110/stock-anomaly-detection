@@ -506,9 +506,11 @@ primary:
   ##
   resources:
     requests:
+      cpu: 200m
       memory: 512Mi
     limits:
-      memory: 10Gi
+      cpu: 1000m
+      memory: 4Gi
   ## Pod Security Context
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
   ## @param primary.podSecurityContext.enabled Enable security context
@@ -967,9 +969,11 @@ readReplicas:
   ##
   resources:
     requests:
+      cpu: 100m
       memory: 512Mi
     limits:
-      memory: 10Gi
+      cpu: 500m
+      memory: 2Gi
   ## Pod Security Context
   ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
   ## @param readReplicas.podSecurityContext.enabled Enable security context

@@ -346,8 +346,10 @@ resourcesPreset: "none"
 ##
 resources:
   requests:
+    cpu: 100m
     memory: 256Mi
   limits:
+    cpu: 500m
     memory: 768Mi
 ## Configure extra options for Keycloak containers' liveness, readiness and startup probes
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes

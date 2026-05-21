@@ -3,6 +3,7 @@
 ## 1. git-sync SSH Secret (`extraSecrets`)
 
 ### What was changed
+
 ```yaml
 extraSecrets: {}
 # airflow-ssh-secret is managed externally via kubectl (not by Helm).
@@ -10,6 +11,7 @@ extraSecrets: {}
 ```
 
 ### Why
+
 The original `extraSecrets` block embedded the base64-encoded SSH private key directly inside the Helm values file. This means every `helm upgrade` would attempt to re-create or overwrite the secret. Since the secret was already created manually via `kubectl`, Helm would conflict with it.
 
 Setting `extraSecrets: {}` tells Helm to not manage this secret at all. The git-sync sidecar still finds the secret because `gitSync.sshKeySecret: airflow-ssh-secret` references it by name — Helm just stops owning it.
@@ -46,13 +48,13 @@ extraEnv: |
 
 These are placed at the **global** `extraEnv` level (not inside `webserver:`), so they apply to all Airflow pods — API server, scheduler, webserver, workers — which all need to know the auth manager.
 
-| Variable | Value | Purpose |
-|----------|-------|---------|
-| `AIRFLOW__CORE__AUTH_MANAGER` | `KeycloakAuthManager` full path | Tells Airflow to use the Keycloak auth manager instead of the default FAB auth manager |
-| `AIRFLOW__KEYCLOAK_AUTH_MANAGER__CLIENT_ID` | `airflow` | The client ID registered in Keycloak's `iceberg` realm |
-| `AIRFLOW__KEYCLOAK_AUTH_MANAGER__REALM` | `iceberg` | The Keycloak realm containing Airflow users and roles |
-| `AIRFLOW__KEYCLOAK_AUTH_MANAGER__SERVER_URL` | internal cluster URL | Keycloak's base URL used by Airflow pods to call the Keycloak API server-side. Uses the internal Kubernetes service (`svc.cluster.local`) to avoid TLS issues with the self-signed `.test` domain cert |
-| `_PIP_ADDITIONAL_REQUIREMENTS` | `apache-airflow-providers-keycloak` | Installs the keycloak provider at pod startup. **For production, build a custom Docker image with this package instead.** |
+| Variable                                     | Value                               | Purpose                                                                                                                                                                                                |
+| -------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AIRFLOW__CORE__AUTH_MANAGER`                | `KeycloakAuthManager` full path     | Tells Airflow to use the Keycloak auth manager instead of the default FAB auth manager                                                                                                                 |
+| `AIRFLOW__KEYCLOAK_AUTH_MANAGER__CLIENT_ID`  | `airflow`                           | The client ID registered in Keycloak's `iceberg` realm                                                                                                                                                 |
+| `AIRFLOW__KEYCLOAK_AUTH_MANAGER__REALM`      | `iceberg`                           | The Keycloak realm containing Airflow users and roles                                                                                                                                                  |
+| `AIRFLOW__KEYCLOAK_AUTH_MANAGER__SERVER_URL` | internal cluster URL                | Keycloak's base URL used by Airflow pods to call the Keycloak API server-side. Uses the internal Kubernetes service (`svc.cluster.local`) to avoid TLS issues with the self-signed `.test` domain cert |
+| `_PIP_ADDITIONAL_REQUIREMENTS`               | `apache-airflow-providers-keycloak` | Installs the keycloak provider at pod startup. **For production, build a custom Docker image with this package instead.**                                                                              |
 
 ---
 
@@ -67,6 +69,7 @@ extraEnvFrom: |
 Injects all keys from the `airflow-keycloak-secret` Kubernetes Secret as env vars into every Airflow pod. The secret must contain the key `AIRFLOW__KEYCLOAK_AUTH_MANAGER__CLIENT_SECRET`.
 
 **How to create the secret:**
+
 ```bash
 kubectl create secret generic airflow-keycloak-secret \
   --from-literal=AIRFLOW__KEYCLOAK_AUTH_MANAGER__CLIENT_SECRET=<client-secret-from-keycloak> \
@@ -88,6 +91,7 @@ http://openhouse-keycloak.stock-anomaly-detection.svc.cluster.local
 - The browser still redirects to the external `openhouse.keycloak.test` hostname for the login page — that is fine since the user's browser handles it, not the pod.
 
 **Confirmed service:**
+
 ```
 openhouse-keycloak   ClusterIP   10.105.207.52   <none>   80/TCP
 ```
@@ -97,17 +101,22 @@ openhouse-keycloak   ClusterIP   10.105.207.52   <none>   80/TCP
 ## 3. Keycloak Client Setup (one-time, in `iceberg` realm)
 
 ### Step 1 — Create client
+
 **Clients** → **Create client**
+
 - Client ID: `airflow`
 - Type: `OpenID Connect`
 - Enable **Client authentication** (confidential client — required for a client secret)
 
 ### Step 2 — Settings tab
+
 - Valid redirect URIs: `http://<airflow-webserver-host>/login/keycloak/authorized`
 - Web origins: `http://<airflow-webserver-host>`
 
 ### Step 3 — Get client secret
+
 **Credentials** tab → copy the secret → create K8s secret:
+
 ```bash
 kubectl create secret generic airflow-keycloak-secret \
   --from-literal=AIRFLOW__KEYCLOAK_AUTH_MANAGER__CLIENT_SECRET=<paste-here> \
@@ -115,6 +124,7 @@ kubectl create secret generic airflow-keycloak-secret \
 ```
 
 ### Step 4 — Apply
+
 ```bash
 helm upgrade airflow apache-airflow/airflow \
   -n stock-anomaly-detection \
@@ -122,6 +132,7 @@ helm upgrade airflow apache-airflow/airflow \
 ```
 
 ### Step 5 — Check logs
+
 ```bash
 kubectl logs -n stock-anomaly-detection -l component=webserver -f
 kubectl logs -n stock-anomaly-detection -l component=api-server -f
@@ -156,10 +167,10 @@ Three separate nginx issues all caused the same symptom — `invalid_grant: Code
 
 #### Annotation breakdown
 
-| Annotation | Value | Purpose |
-|-----------|-------|---------|
-| `proxy-buffer-size` | `16k` | **Primary fix.** Increases the header buffer from 4k to 16k so nginx can forward the large JWT `Set-Cookie` header without returning 502. |
-| `proxy-buffering` | `off` | Disables response body buffering. Prevents nginx from holding the full response body in memory before forwarding, reducing the chance of buffer overflows on large responses. |
+| Annotation            | Value | Purpose                                                                                                                                                                                                                       |
+| --------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `proxy-buffer-size`   | `16k` | **Primary fix.** Increases the header buffer from 4k to 16k so nginx can forward the large JWT `Set-Cookie` header without returning 502.                                                                                     |
+| `proxy-buffering`     | `off` | Disables response body buffering. Prevents nginx from holding the full response body in memory before forwarding, reducing the chance of buffer overflows on large responses.                                                 |
 | `proxy-next-upstream` | `off` | Prevents nginx from retrying a failed request on a second upstream connection. Without this, a transient upstream error could cause nginx to replay the `GET /auth/login_callback` request, consuming the code a second time. |
 
 #### Why `proxy-buffering: off` alone is not enough
@@ -194,6 +205,7 @@ RUN pip install apache-airflow-providers-keycloak
 ```
 
 Then set in values:
+
 ```yaml
 images:
   airflow:
@@ -202,3 +214,52 @@ images:
 ```
 
 And remove `_PIP_ADDITIONAL_REQUIREMENTS` from `extraEnv`.
+
+---
+
+## 7. SimpleAuthManager — module path changed in Airflow 3.x
+
+### Symptom
+
+All pods (`api-server`, `scheduler`, `dag-processor`, `triggerer`, `worker`) stuck in `Init:CrashLoopBackOff`. Migration job crashes with:
+
+```
+ModuleNotFoundError: No module named 'airflow.auth'
+AirflowConfigException: The object could not be loaded. Please check "auth_manager" key in "core" section.
+Current value: "airflow.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
+```
+
+### Root cause
+
+Airflow 3.x restructured the entire auth layer under `api_fastapi`. The `airflow.auth` module no longer exists. The migration job runs before all init containers — when it crashes, every pod stays stuck at `Init:CrashLoopBackOff`.
+
+### Fix
+
+Update both locations in `airflow-no-auth.yaml`:
+
+**1. `extraEnv` (env var override):**
+
+```yaml
+# WRONG — Airflow 2.x path
+- name: AIRFLOW__CORE__AUTH_MANAGER
+  value: "airflow.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
+
+# CORRECT — Airflow 3.x path
+- name: AIRFLOW__CORE__AUTH_MANAGER
+  value: "airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
+```
+
+**2. `config.core.auth_manager`:**
+
+```yaml
+config:
+  core:
+    auth_manager: "airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
+```
+
+Remove `AIRFLOW__SIMPLE_AUTH_MANAGER__FAB_OVERRIDE_ROLE` — this key is FAB-specific and has no effect on SimpleAuthManager.
+
+### Notes
+
+- `AIRFLOW__SIMPLE_AUTH_MANAGER__PASSWORDS` remains valid with the same `user:password` format.
+- Nếu sau này chuyển sang `KeycloakAuthManager`, xem mục 2 của file này.

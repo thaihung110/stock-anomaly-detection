@@ -25,7 +25,7 @@ object AppConfig {
     gravitinoOauthServerUri    = sys.env.getOrElse("GRAVITINO_OAUTH_SERVER_URI", "http://openhouse-keycloak:8080"),
     gravitinoOauthTokenPath    = sys.env.getOrElse("GRAVITINO_OAUTH_TOKEN_PATH", "realms/master/protocol/openid-connect/token"),
     gravitinoOauthScope        = sys.env.getOrElse("GRAVITINO_OAUTH_SCOPE", "openid"),
-    inputTable                 = sys.env.getOrElse("INPUT_TABLE", "gravitino_catalog.bronze.raw_company_info"),
+    inputTable                 = sys.env.getOrElse("INPUT_TABLE", "gravitino_catalog.raw.raw_company_info"),
     outputNamespace            = sys.env.getOrElse("OUTPUT_NAMESPACE", "gravitino_catalog.gold")
   )
 }
