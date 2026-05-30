@@ -16,6 +16,10 @@ class UserAlertRule(BaseModel):
     frequency: AlertFrequency = AlertFrequency.EVERY_TIME
     cooldown_min: int = 60
     status: AlertStatus = AlertStatus.ACTIVE
+    # Phase 2: joined from ``users.chat_id`` in ``get_active_rules``.
+    # ``None`` means the user has not run /start yet — telegram delivery
+    # falls back to the admin chat (see infrastructure/telegram.py).
+    chat_id: int | str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

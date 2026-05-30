@@ -30,12 +30,16 @@ def quote() -> QuoteEvent:
 
 @pytest.fixture
 def context() -> dict[str, float]:
+    # Raw batch context values as loaded by context_loader (no pre-computed
+    # price_zscore/volume_zscore/etc. — those are computed on-the-fly).
     return {
-        "price_zscore": 3.5,
-        "volume_zscore": 4.2,
-        "vol_ratio_20d": 2.8,
+        "mean_return_20d": 0.0,
+        "std_return_20d": 0.01,
+        "mean_volume_20d": 500_000.0,
+        "std_volume_20d": 200_000.0,
+        "bb_upper_20d": 155.0,
+        "bb_lower_20d": 145.0,
         "rsi_14": 75.0,
-        "bb_position": 1.1,
     }
 
 
@@ -55,19 +59,63 @@ class TestGetFieldValue:
         assert isinstance(result, float)
 
     def test_price_zscore(self, quote: QuoteEvent, context: dict[str, float]) -> None:
-        assert get_field_value(quote, AlertField.PRICE_ZSCORE, context) == 3.5
+        # daily_return = (150 - 146.5) / 146.5; z = (daily_return - 0) / 0.01
+        expected = ((quote.price - quote.prev_close) / quote.prev_close) / context["std_return_20d"]
+        result = get_field_value(quote, AlertField.PRICE_ZSCORE, context)
+        assert result == pytest.approx(expected)
 
     def test_volume_zscore(self, quote: QuoteEvent, context: dict[str, float]) -> None:
-        assert get_field_value(quote, AlertField.VOLUME_ZSCORE, context) == 4.2
+        # (1_000_000 - 500_000) / 200_000 = 2.5
+        expected = (float(quote.day_volume) - context["mean_volume_20d"]) / context["std_volume_20d"]
+        result = get_field_value(quote, AlertField.VOLUME_ZSCORE, context)
+        assert result == pytest.approx(expected)
+        assert result == pytest.approx(2.5)
 
     def test_volume_ratio_20d(self, quote: QuoteEvent, context: dict[str, float]) -> None:
-        assert get_field_value(quote, AlertField.VOLUME_RATIO_20D, context) == 2.8
+        # 1_000_000 / 500_000 = 2.0
+        expected = float(quote.day_volume) / context["mean_volume_20d"]
+        result = get_field_value(quote, AlertField.VOLUME_RATIO_20D, context)
+        assert result == pytest.approx(expected)
+        assert result == pytest.approx(2.0)
 
     def test_rsi_14(self, quote: QuoteEvent, context: dict[str, float]) -> None:
         assert get_field_value(quote, AlertField.RSI_14, context) == 75.0
 
     def test_bb_position(self, quote: QuoteEvent, context: dict[str, float]) -> None:
-        assert get_field_value(quote, AlertField.BB_POSITION, context) == 1.1
+        # (150 - 145) / (155 - 145) = 5 / 10 = 0.5
+        expected = (quote.price - context["bb_lower_20d"]) / (
+            context["bb_upper_20d"] - context["bb_lower_20d"]
+        )
+        result = get_field_value(quote, AlertField.BB_POSITION, context)
+        assert result == pytest.approx(expected)
+        assert result == pytest.approx(0.5)
+
+    # ── Zero-denominator guards ──
+
+    def test_price_zscore_returns_none_when_std_zero(self, quote: QuoteEvent) -> None:
+        ctx = {"mean_return_20d": 0.0, "std_return_20d": 0.0}
+        assert get_field_value(quote, AlertField.PRICE_ZSCORE, ctx) is None
+
+    def test_price_zscore_returns_none_when_prev_close_zero(self, context: dict[str, float]) -> None:
+        q = QuoteEvent(
+            symbol="AAPL", price=150.0, change_pct=0.0, day_volume=1_000_000,
+            day_high=152.0, day_low=148.0, prev_close=0.0, event_ts="2026-05-18T10:00:00Z",
+        )
+        assert get_field_value(q, AlertField.PRICE_ZSCORE, context) is None
+
+    def test_volume_zscore_returns_none_when_std_zero(self, quote: QuoteEvent) -> None:
+        ctx = {"mean_volume_20d": 500_000.0, "std_volume_20d": 0.0}
+        assert get_field_value(quote, AlertField.VOLUME_ZSCORE, ctx) is None
+
+    def test_volume_ratio_returns_none_when_mean_zero(self, quote: QuoteEvent) -> None:
+        ctx = {"mean_volume_20d": 0.0}
+        assert get_field_value(quote, AlertField.VOLUME_RATIO_20D, ctx) is None
+
+    def test_bb_position_returns_none_when_range_zero(self, quote: QuoteEvent) -> None:
+        ctx = {"bb_upper_20d": 150.0, "bb_lower_20d": 150.0}
+        assert get_field_value(quote, AlertField.BB_POSITION, ctx) is None
+
+    # ── None/empty context ──
 
     @pytest.mark.parametrize(
         "field",
@@ -97,6 +145,7 @@ class TestGetFieldValue:
     def test_context_dependent_fields_return_none_when_key_missing(
         self, quote: QuoteEvent, field: AlertField
     ) -> None:
+        # Empty dict → zero denominators for computed fields, missing key for RSI_14.
         assert get_field_value(quote, field, {}) is None
 
     def test_price_ignores_none_context(self, quote: QuoteEvent) -> None:
