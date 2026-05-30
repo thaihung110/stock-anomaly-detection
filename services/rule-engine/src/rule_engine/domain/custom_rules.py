@@ -7,12 +7,11 @@ from rule_engine.domain.schema import QuoteEvent
 
 BATCH_DAILY_FIELDS: frozenset[AlertField] = frozenset({AlertField.RSI_14, AlertField.BB_POSITION})
 
+# Remaining context-only fields (looked up directly from the batch context dict).
+# Computed fields (PRICE_ZSCORE, VOLUME_ZSCORE, VOLUME_RATIO_20D, BB_POSITION) are
+# derived on-the-fly in get_field_value — they are NOT keys in the context dict.
 _CONTEXT_FIELD_KEYS: dict[AlertField, str] = {
-    AlertField.PRICE_ZSCORE: "price_zscore",
-    AlertField.VOLUME_ZSCORE: "volume_zscore",
-    AlertField.VOLUME_RATIO_20D: "vol_ratio_20d",
     AlertField.RSI_14: "rsi_14",
-    AlertField.BB_POSITION: "bb_position",
 }
 
 
@@ -21,10 +20,13 @@ def get_field_value(
     field: AlertField,
     context: dict[str, float] | None,
 ) -> float | None:
-    """Extract the current value for a given AlertField from a quote event and context.
+    """Return the current value for an AlertField given a quote event and batch context.
 
-    Returns None when the value is unavailable (context-dependent field with no context,
-    or context key missing).
+    Computed fields (price_zscore, volume_zscore, volume_ratio_20d, bb_position) are
+    derived from the event + context on every call so that custom rules on these fields
+    work identically to the corresponding system rules.
+
+    Returns None when the value cannot be computed (missing context, zero denominator).
     """
     match field:
         case AlertField.PRICE:
@@ -33,10 +35,43 @@ def get_field_value(
             return event.change_pct
         case AlertField.DAY_VOLUME:
             return float(event.day_volume)
-        case _:
+        case AlertField.PRICE_ZSCORE:
+            if context is None or event.prev_close == 0.0:
+                return None
+            std = context.get("std_return_20d", 0.0)
+            if std == 0.0:
+                return None
+            daily_return = (event.price - event.prev_close) / event.prev_close
+            return (daily_return - context.get("mean_return_20d", 0.0)) / std
+        case AlertField.VOLUME_ZSCORE:
             if context is None:
                 return None
-            return context.get(_CONTEXT_FIELD_KEYS[field])
+            std = context.get("std_volume_20d", 0.0)
+            if std == 0.0:
+                return None
+            return (float(event.day_volume) - context.get("mean_volume_20d", 0.0)) / std
+        case AlertField.VOLUME_RATIO_20D:
+            if context is None:
+                return None
+            mean_vol = context.get("mean_volume_20d", 0.0)
+            if mean_vol == 0.0:
+                return None
+            return float(event.day_volume) / mean_vol
+        case AlertField.BB_POSITION:
+            if context is None:
+                return None
+            bb_upper = context.get("bb_upper_20d", 0.0)
+            bb_lower = context.get("bb_lower_20d", 0.0)
+            bb_range = bb_upper - bb_lower
+            if bb_range == 0.0:
+                return None
+            return (event.price - bb_lower) / bb_range
+        case _:
+            # RSI_14 and any future pure context-lookup fields
+            if context is None:
+                return None
+            key = _CONTEXT_FIELD_KEYS.get(field)
+            return context.get(key) if key is not None else None
 
 
 def evaluate_condition(

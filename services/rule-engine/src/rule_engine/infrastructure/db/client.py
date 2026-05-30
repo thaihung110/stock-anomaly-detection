@@ -16,7 +16,7 @@ class DbClient:
 
     async def connect(self) -> None:
         self._pool = await asyncpg.create_pool(self._dsn, min_size=2, max_size=10)
-        logger.info("db_pool_created", dsn=self._dsn)
+        logger.info("db_pool_created", min_size=2, max_size=10)
 
     async def close(self) -> None:
         if self._pool:
@@ -32,12 +32,17 @@ class DbClient:
     # ── Phase 3.2 ────────────────────────────────────────────────────────────
 
     async def get_active_rules(self) -> list[UserAlertRule]:
+        # Phase 2: LEFT JOIN users so each rule carries its owner's chat_id.
+        # LEFT (not INNER) so rules survive even if the user has not run /start
+        # yet — delivery falls back to the admin chat in that case.
         rows = await self.pool.fetch(
             """
-            SELECT rule_id, user_id, symbols, field, operator, threshold,
-                   frequency, cooldown_min, status, created_at, updated_at
-            FROM user_alert_rules
-            WHERE status = $1::alert_status
+            SELECT r.rule_id, r.user_id, r.symbols, r.field, r.operator, r.threshold,
+                   r.frequency, r.cooldown_min, r.status, r.created_at, r.updated_at,
+                   u.chat_id
+            FROM user_alert_rules r
+            LEFT JOIN users u ON u.user_id = r.user_id
+            WHERE r.status = $1::alert_status
             """,
             AlertStatus.ACTIVE.value,
         )
@@ -177,6 +182,9 @@ class DbClient:
 # ── Row mappers ───────────────────────────────────────────────────────────────
 
 def _row_to_rule(row: asyncpg.Record) -> UserAlertRule:
+    # ``chat_id`` is only selected by ``get_active_rules`` (JOIN users); other
+    # queries that fetch from ``user_alert_rules`` alone won't have the column.
+    chat_id = row.get("chat_id")
     return UserAlertRule(
         rule_id=UUID(str(row["rule_id"])),
         user_id=UUID(str(row["user_id"])),
@@ -187,6 +195,7 @@ def _row_to_rule(row: asyncpg.Record) -> UserAlertRule:
         frequency=AlertFrequency(row["frequency"]),
         cooldown_min=row["cooldown_min"],
         status=AlertStatus(row["status"]),
+        chat_id=chat_id,
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

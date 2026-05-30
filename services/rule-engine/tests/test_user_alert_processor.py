@@ -1,4 +1,5 @@
 """Tests for user_alert_processor.py — UserAlertProcessor."""
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -167,7 +168,9 @@ class TestEvaluate:
 
         with patch("rule_engine.application.user_alert_processor.send_telegram_custom_alert") as mock_tg:
             await processor.evaluate(_make_quote("AAPL", 150.0), None)
-            mock_tg.assert_awaited_once()
+            # Telegram is dispatched via create_task — flush the event loop before asserting.
+            await asyncio.sleep(0)
+            mock_tg.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_skips_rule_with_null_rule_id(self, cfg: Settings) -> None:
@@ -260,7 +263,7 @@ class TestEvaluate:
         repo.mark_triggered.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_db_failure_metric_incremented_on_mark_triggered_error(
+    async def test_mark_triggered_db_error_is_swallowed(
         self, cfg: Settings
     ) -> None:
         rule = _make_rule(threshold=100.0, frequency=AlertFrequency.ONCE)
@@ -270,12 +273,8 @@ class TestEvaluate:
         await processor.reload_rules()
 
         with patch("rule_engine.application.user_alert_processor.send_telegram_custom_alert"):
-            with patch("rule_engine.application.user_alert_processor.db_insert_failures_total") as mock_ctr:
-                mock_labels = MagicMock()
-                mock_ctr.labels.return_value = mock_labels
-                await processor.evaluate(_make_quote("AAPL", 150.0), None)
-
-        mock_labels.inc.assert_called_once()
+            # Must not raise; failure is logged only.
+            await processor.evaluate(_make_quote("AAPL", 150.0), None)
 
 
 # ── update_prev_values ────────────────────────────────────────────────────────
@@ -311,13 +310,21 @@ class TestUpdatePrevValues:
     @pytest.mark.asyncio
     async def test_stores_context_fields_when_ctx_provided(self, cfg: Settings) -> None:
         processor = UserAlertProcessor(_make_mock_repo(), cfg)
+        # _make_quote has prev_close=140.0; with std_return_20d=0.01 and mean=0:
+        # price_zscore = ((150 - 140) / 140) / 0.01 = 7.142...
+        ctx = {
+            "rsi_14": 75.0,
+            "mean_return_20d": 0.0,
+            "std_return_20d": 0.01,
+            "mean_volume_20d": 500_000.0,
+            "std_volume_20d": 200_000.0,
+        }
 
-        await processor.update_prev_values(
-            _make_quote("AAPL"), {"rsi_14": 75.0, "price_zscore": 2.5}
-        )
+        await processor.update_prev_values(_make_quote("AAPL"), ctx)
 
         assert processor._prev_values[("AAPL", AlertField.RSI_14)] == 75.0
-        assert processor._prev_values[("AAPL", AlertField.PRICE_ZSCORE)] == 2.5
+        # Computed PRICE_ZSCORE is stored (not a context key, but computed on-the-fly)
+        assert ("AAPL", AlertField.PRICE_ZSCORE) in processor._prev_values
 
     @pytest.mark.asyncio
     async def test_crossing_detection_uses_prev_value(self, cfg: Settings) -> None:
@@ -357,7 +364,7 @@ class TestUpdatePrevValues:
         repo.insert_event.assert_not_awaited()
 
 
-# ── _in_cooldown ──────────────────────────────────────────────────────────────
+# ── _check_cooldown / _record_fired ──────────────────────────────────────────
 
 
 class TestInCooldown:
@@ -367,7 +374,7 @@ class TestInCooldown:
         rule_id = uuid4()
         now = datetime.now(UTC)
 
-        result = await processor._in_cooldown(rule_id, "AAPL", now, cooldown_min=60)
+        result = await processor._check_cooldown(rule_id, "AAPL", now, cooldown_min=60)
 
         assert result is False
 
@@ -377,8 +384,10 @@ class TestInCooldown:
         rule_id = uuid4()
         now = datetime.now(UTC)
 
-        await processor._in_cooldown(rule_id, "AAPL", now, cooldown_min=60)
-        result = await processor._in_cooldown(rule_id, "AAPL", now, cooldown_min=60)
+        # First: check says no cooldown, then we record the fire.
+        assert await processor._check_cooldown(rule_id, "AAPL", now, cooldown_min=60) is False
+        await processor._record_fired(rule_id, "AAPL", now)
+        result = await processor._check_cooldown(rule_id, "AAPL", now, cooldown_min=60)
 
         assert result is True
 
@@ -388,8 +397,8 @@ class TestInCooldown:
         rule_id = uuid4()
         now = datetime.now(UTC)
 
-        await processor._in_cooldown(rule_id, "AAPL", now, cooldown_min=0)
-        result = await processor._in_cooldown(rule_id, "AAPL", now, cooldown_min=0)
+        await processor._record_fired(rule_id, "AAPL", now)
+        result = await processor._check_cooldown(rule_id, "AAPL", now, cooldown_min=0)
 
         assert result is False
 
@@ -401,7 +410,7 @@ class TestInCooldown:
         rule_id = uuid4()
         now = datetime.now(UTC)
 
-        await processor._in_cooldown(rule_id, "AAPL", now, cooldown_min=60)
-        result = await processor._in_cooldown(rule_id, "MSFT", now, cooldown_min=60)
+        await processor._record_fired(rule_id, "AAPL", now)
+        result = await processor._check_cooldown(rule_id, "MSFT", now, cooldown_min=60)
 
         assert result is False

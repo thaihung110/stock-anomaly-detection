@@ -1,4 +1,4 @@
-from pydantic import model_validator
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,22 +41,30 @@ class Settings(BaseSettings):
     pg_port: int = 5432
     pg_database: str = "stock_anomaly"
     pg_user: str = "stock_user"
-    pg_password: str = ""
+    pg_password: SecretStr = SecretStr("")
     pg_dsn: str = ""
 
     # Telegram (for custom alert delivery)
     telegram_bot_token: str = ""
-    telegram_chat_id: str = ""
+    telegram_chat_id: int | str | None = None
+    telegram_api_base_url: str = "https://api.telegram.org"
+    telegram_retry_attempts: int = 3
+    telegram_retry_base_delay: float = 1.0
+
+    # Phase 2 — per-user routing kill switch.
+    # When False (default), custom alerts always go to ``telegram_chat_id`` (admin).
+    # When True, they go to ``users.chat_id`` joined via ``get_active_rules``,
+    # falling back to ``telegram_chat_id`` when the column is NULL.
+    enable_per_user_routing: bool = False
 
     # Service
     http_port: int = 8080
-    metrics_port: int = 8000
 
     @model_validator(mode="after")
     def build_pg_dsn(self) -> "Settings":
         if not self.pg_dsn:
             self.pg_dsn = (
-                f"postgresql://{self.pg_user}:{self.pg_password}"
+                f"postgresql://{self.pg_user}:{self.pg_password.get_secret_value()}"
                 f"@{self.pg_host}:{self.pg_port}/{self.pg_database}"
             )
         return self

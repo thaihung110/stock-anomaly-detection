@@ -18,6 +18,13 @@ _CONTEXT_FIELDS = (
     "vwap_5d_avg",
 )
 
+# Per-field NULL coercion overrides. Without this, rsi_14=NULL → 0.0 which
+# satisfies rsi < 20 and fires a false oversold alert on every quote for
+# symbols with insufficient history. Neutral RSI (50) skips both thresholds.
+_CONTEXT_NULL_DEFAULTS: dict[str, float] = {
+    "rsi_14": 50.0,
+}
+
 
 def load_context(cfg: Settings) -> dict[str, dict[str, float]]:
     """Load gold.rule_engine_context from Iceberg REST catalog (Gravitino).
@@ -62,7 +69,7 @@ def load_context(cfg: Settings) -> dict[str, dict[str, float]]:
             field: float(
                 v
                 if (v := arrow_table.column(field)[i].as_py()) is not None
-                else 0.0
+                else _CONTEXT_NULL_DEFAULTS.get(field, 0.0)
             )
             for field in _CONTEXT_FIELDS
         }

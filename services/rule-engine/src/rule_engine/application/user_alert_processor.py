@@ -13,11 +13,6 @@ from rule_engine.domain.models import UserAlertEvent, UserAlertRule
 from rule_engine.domain.schema import QuoteEvent
 from rule_engine.infrastructure.db.repository import UserAlertRepository
 from rule_engine.infrastructure.telegram import send_telegram_custom_alert
-from rule_engine.metrics import (
-    custom_alerts_fired_total,
-    custom_rules_evaluated_total,
-    db_insert_failures_total,
-)
 
 logger = structlog.get_logger(__name__)
 
@@ -48,6 +43,10 @@ class UserAlertProcessor:
         self._prev_values: dict[tuple[str, AlertField], float] = {}
         self._prev_values_lock = asyncio.Lock()
 
+        # Keeps strong references to fire-and-forget Telegram tasks so the GC
+        # doesn't destroy them before they complete.
+        self._background_tasks: set[asyncio.Task[None]] = set()
+
     async def reload_rules(self) -> int:
         """Reload active rules from the database. Returns count of loaded rules."""
         rules = await self._repository.get_active_rules()
@@ -76,22 +75,11 @@ class UserAlertProcessor:
         Must be called after evaluate() to ensure crossing-detection compares
         against the value from the *previous* quote, not the current one.
         """
-        updates: dict[tuple[str, AlertField], float] = {
-            (event.symbol, AlertField.PRICE): event.price,
-            (event.symbol, AlertField.DAILY_RETURN): event.change_pct,
-            (event.symbol, AlertField.DAY_VOLUME): float(event.day_volume),
-        }
-        if ctx:
-            for field, key in (
-                (AlertField.PRICE_ZSCORE, "price_zscore"),
-                (AlertField.VOLUME_ZSCORE, "volume_zscore"),
-                (AlertField.VOLUME_RATIO_20D, "vol_ratio_20d"),
-                (AlertField.RSI_14, "rsi_14"),
-                (AlertField.BB_POSITION, "bb_position"),
-            ):
-                val = ctx.get(key)
-                if val is not None:
-                    updates[(event.symbol, field)] = val
+        updates: dict[tuple[str, AlertField], float] = {}
+        for field in AlertField:
+            val = get_field_value(event, field, ctx)
+            if val is not None:
+                updates[(event.symbol, field)] = val
 
         async with self._prev_values_lock:
             self._prev_values.update(updates)
@@ -111,8 +99,6 @@ class UserAlertProcessor:
         if current is None:
             return
 
-        custom_rules_evaluated_total.inc()
-
         prev = prev_snapshot.get((event.symbol, rule.field))
         if not evaluate_condition(current, rule.operator, rule.threshold, prev):
             return
@@ -121,7 +107,7 @@ class UserAlertProcessor:
             logger.error("skipping_rule_with_null_id", user_id=str(rule.user_id))
             return
 
-        if await self._in_cooldown(rule.rule_id, event.symbol, now, rule.cooldown_min):
+        if await self._check_cooldown(rule.rule_id, event.symbol, now, rule.cooldown_min):
             return
 
         alert_event = UserAlertEvent(
@@ -134,10 +120,23 @@ class UserAlertProcessor:
             threshold_snapshot=rule.threshold,
             triggered_value=current,
         )
-        await self._repository.insert_event(alert_event)
-        custom_alerts_fired_total.labels(
-            field=rule.field.value, operator=rule.operator.value
-        ).inc()
+        try:
+            await self._repository.insert_event(alert_event)
+        except asyncpg.PostgresError as exc:
+            logger.error(
+                "failed_to_insert_alert_event",
+                rule_id=str(rule.rule_id),
+                user_id=str(rule.user_id),
+                symbol=event.symbol,
+                error=str(exc),
+            )
+            # Do NOT record cooldown — the event was not persisted, so the rule
+            # must be eligible to retry on the next quote.
+            return
+
+        # Record fired only after the event is durably persisted.
+        await self._record_fired(rule.rule_id, event.symbol, now)
+
         logger.info(
             "custom_alert_fired",
             symbol=event.symbol,
@@ -148,28 +147,36 @@ class UserAlertProcessor:
             value=current,
         )
 
-        await send_telegram_custom_alert(rule, event.symbol, current, now, self._cfg)
+        # Deliver via Telegram off the hot path — the event log is already written.
+        # send_telegram_custom_alert handles all its own exceptions internally.
+        task = asyncio.create_task(
+            send_telegram_custom_alert(rule, event.symbol, current, now, self._cfg),
+            name=f"telegram_alert_{rule.rule_id}_{event.symbol}",
+        )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
         if rule.frequency == AlertFrequency.ONCE:
             await self._mark_triggered(rule.rule_id)
 
-    async def _in_cooldown(
+    async def _check_cooldown(
         self, rule_id: UUID, symbol: str, now: datetime, cooldown_min: int
     ) -> bool:
-        """Returns True if in cooldown (should skip); atomically updates last_fired otherwise."""
+        """Return True if the rule is still within its cooldown window (should skip)."""
         key: tuple[UUID, str] = (rule_id, symbol)
         async with self._last_fired_lock:
             last = self._last_fired.get(key)
-            if last and (now - last).total_seconds() < cooldown_min * _SECONDS_PER_MINUTE:
-                return True
-            self._last_fired[key] = now
-            return False
+            return bool(last and (now - last).total_seconds() < cooldown_min * _SECONDS_PER_MINUTE)
+
+    async def _record_fired(self, rule_id: UUID, symbol: str, now: datetime) -> None:
+        """Record that the rule fired at `now`. Must be called only after a successful INSERT."""
+        async with self._last_fired_lock:
+            self._last_fired[(rule_id, symbol)] = now
 
     async def _mark_triggered(self, rule_id: UUID) -> None:
         try:
             await self._repository.mark_triggered(rule_id)
         except asyncpg.PostgresError as exc:
-            db_insert_failures_total.labels(operation="rule_status").inc()
             logger.error(
                 "failed_to_mark_rule_triggered",
                 rule_id=str(rule_id),
