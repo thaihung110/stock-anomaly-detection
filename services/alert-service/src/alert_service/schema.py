@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class RuleName(str, Enum):
@@ -33,3 +33,35 @@ class AlertEvent(BaseModel):
     @classmethod
     def uppercase_symbol(cls, v: str) -> str:
         return v.upper()
+
+
+class DLQReason(str, Enum):
+    """Why an alert was diverted to ``alerts.failed``."""
+
+    RATE_LIMIT = "rate_limit"  # 429 after all retries
+    PERMANENT = "permanent"  # 4xx that is not 429 (bad token, chat not found, ...)
+    TRANSPORT = "transport"  # timeout / 5xx / network after all retries
+    HISTORY_WRITE = "history_write"  # Telegram OK but Iceberg append failed
+    SUBSCRIBER_LOOKUP = "subscriber_lookup"  # Postgres error fetching recipients
+
+
+class FailedRecipient(BaseModel):
+    """Subset of subscriber data preserved for DLQ replay."""
+
+    user_id: str | None = None
+    chat_id: int | str
+
+
+class FailedAlertEnvelope(BaseModel):
+    """Wire format for ``alerts.failed`` Kafka topic.
+
+    Mirrors the shape consumed by the (future) replay job or operator tooling.
+    ``failed_at_ms`` follows the project-wide epoch-milliseconds convention.
+    """
+
+    original_event: AlertEvent
+    recipient: FailedRecipient | None
+    reason: DLQReason
+    error: str
+    failed_at_ms: int = Field(..., ge=1_000_000_000_000)
+    attempt_count: int = Field(..., ge=1)

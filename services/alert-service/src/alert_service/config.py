@@ -1,3 +1,4 @@
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,12 +7,27 @@ class Settings(BaseSettings):
 
     # Kafka
     kafka_bootstrap_servers: str = "localhost:9092"
-    kafka_input_topic: str = "alerts.raw"
+    kafka_input_topic: str = "alerts.confirmed"
     kafka_consumer_group: str = "alert-service"
+
+    # PostgreSQL — assembled into DSN at startup if not provided.
+    pg_host: str = "localhost"
+    pg_port: int = 5432
+    pg_database: str = "stock_anomaly"
+    pg_user: str = "stock_user"
+    pg_password: SecretStr = SecretStr("")
+    pg_dsn: str = ""
+
+    # Phase 3 — fan-out config
+    # When False (default), system alerts go only to the admin chat (legacy
+    # behavior). When True, fan out to all matching subscribers based on
+    # user_preferences.system_alert_mode and user_watchlist membership.
+    enable_fanout: bool = False
+    subscriber_cache_ttl_sec: float = 60.0
 
     # Telegram
     telegram_bot_token: str
-    telegram_chat_id: str
+    telegram_chat_id: int
     telegram_api_base_url: str = "https://api.telegram.org"
     telegram_retry_attempts: int = 3
     telegram_retry_base_delay: float = 1.0  # seconds, doubled each retry
@@ -32,5 +48,25 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_path_style_access: bool = True
 
+    # Phase 5 — proactive rate-limit + DLQ
+    # Per-replica budget. With 1 replica the global cap stays under Telegram's
+    # ~30 msg/s ceiling; lower if running > 1 replica behind the same bot.
+    telegram_global_rate: float = 25.0
+    telegram_per_chat_rate: float = 1.0
+    rate_limiter_cache_size: int = 10_000
+    rate_limiter_time_period: float = 1.0
+
+    dlq_enabled: bool = True
+    alerts_failed_topic: str = "alerts.failed"
+
     # HTTP server
     app_port: int = 8080
+
+    @model_validator(mode="after")
+    def build_pg_dsn(self) -> "Settings":
+        if not self.pg_dsn:
+            self.pg_dsn = (
+                f"postgresql://{self.pg_user}:{self.pg_password.get_secret_value()}"
+                f"@{self.pg_host}:{self.pg_port}/{self.pg_database}"
+            )
+        return self
