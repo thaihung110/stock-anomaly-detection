@@ -81,7 +81,13 @@ class PerChatRateLimiter:
         if bucket is not None:
             self._buckets.move_to_end(key)
             return bucket
-        if len(self._buckets) >= self._cache_size:
+        # Allow a 10% overflow buffer before evicting.  Evicting at exactly
+        # cache_size would drop the oldest bucket the moment a new chat
+        # appears — if that bucket still has waiters they'd instantly get a
+        # fresh full-capacity bucket, briefly exceeding the per-chat ceiling.
+        # The buffer gives in-use buckets a window to drain before eviction.
+        overflow_limit = self._cache_size + max(1, self._cache_size // 10)
+        if len(self._buckets) >= overflow_limit:
             evicted_key, _ = self._buckets.popitem(last=False)
             logger.debug("rate_limiter_evicted", chat_id=evicted_key)
         bucket = AsyncLimiter(max_rate=self._per_chat_rate, time_period=self._time_period)

@@ -5,6 +5,9 @@ Phase 3: when ``ENABLE_FANOUT`` is true the service uses
 When false it preserves the legacy behavior of sending the single Telegram
 message to ``cfg.telegram_chat_id`` and writing one ``fact_alert_history``
 row with ``user_id = NULL``.
+
+In both paths the Iceberg history write happens **before** the Telegram send
+so the audit trail is durable regardless of delivery outcome.
 """
 from __future__ import annotations
 
@@ -19,10 +22,10 @@ from fastapi.responses import JSONResponse
 from faststream.kafka.fastapi import KafkaRouter
 
 from alert_service.config import Settings
-from alert_service.delivery import AlertDeliveryService
+from alert_service.delivery import AlertDeliveryService, _classify_failure
 from alert_service.dlq_producer import DLQPublisher
 from alert_service.formatter import format_message
-from alert_service.history_writer import append_alert_history, init_iceberg
+from alert_service.history_writer import append_alert_history, close_iceberg, init_iceberg
 from alert_service.rate_limiter import PerChatRateLimiter
 from alert_service.schema import AlertEvent, DLQReason
 from alert_service.subscriber_cache import SubscriberCache
@@ -30,8 +33,6 @@ from alert_service.subscriber_repository import SubscriberRepository
 from alert_service.telegram_client import (
     SharedTelegramClient,
     TelegramError,
-    TelegramPermanentError,
-    TelegramRateLimitError,
     build_telegram_client,
 )
 
@@ -65,7 +66,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await _dlq.start()
 
     if cfg.enable_fanout:
-        _pg_pool = await asyncpg.create_pool(cfg.pg_dsn, min_size=2, max_size=10)
+        _pg_pool = await asyncpg.create_pool(
+            host=cfg.pg_host,
+            port=cfg.pg_port,
+            database=cfg.pg_database,
+            user=cfg.pg_user,
+            password=cfg.pg_password.get_secret_value(),
+            min_size=2,
+            max_size=10,
+        )
         repo = SubscriberRepository(_pg_pool)
         _cache = SubscriberCache(repo, ttl_sec=cfg.subscriber_cache_ttl_sec)
         _delivery = AlertDeliveryService(
@@ -95,6 +104,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await _dlq.stop()
     if _pg_pool is not None:
         await _pg_pool.close()
+    # Drain the Iceberg write executor — waits for any in-flight commit to finish.
+    await asyncio.to_thread(close_iceberg)
     logger.info("alert_service_stopped")
 
 
@@ -108,7 +119,7 @@ async def handle_alert(event: AlertEvent) -> None:
         await _delivery.fan_out(event)
         return
 
-    # Legacy path — fan-out disabled. Still benefits from the proactive
+    # Legacy path — fan-out disabled.  Still benefits from the proactive
     # rate-limiter and DLQ so a flaky Telegram doesn't silently drop alerts.
     if _telegram is None:
         logger.error(
@@ -117,36 +128,18 @@ async def handle_alert(event: AlertEvent) -> None:
             symbol=event.symbol,
         )
         return
-    text = format_message(event)
-    if _rate_limiter is not None:
-        await _rate_limiter.acquire(cfg.telegram_chat_id)
-    try:
-        await _telegram.send_message(cfg.telegram_chat_id, text)
-    except TelegramError as exc:
-        logger.error(
-            "alert_dropped_telegram_failure",
-            alert_id=event.alert_id,
-            symbol=event.symbol,
-            rule=event.rule_name.value,
-        )
-        if _dlq is not None:
-            if isinstance(exc, TelegramRateLimitError):
-                reason = DLQReason.RATE_LIMIT
-            elif isinstance(exc, TelegramPermanentError):
-                reason = DLQReason.PERMANENT
-            else:
-                reason = DLQReason.TRANSPORT
-            await _dlq.publish_failure(
-                event=event,
-                recipient=cfg.telegram_chat_id,
-                reason=reason,
-                error=str(exc),
-                attempt_count=cfg.telegram_retry_attempts,
-            )
-        return
 
+    # Write history FIRST — audit trail before any delivery attempt.
     try:
         await append_alert_history(event, cfg)
+    except asyncio.TimeoutError:
+        # Unknown commit state — must not DLQ to avoid duplicate rows on replay.
+        logger.error(
+            "alert_history_timeout_unknown_state",
+            alert_id=event.alert_id,
+            symbol=event.symbol,
+        )
+        return
     except asyncio.CancelledError:
         raise
     except Exception as exc:
@@ -161,6 +154,28 @@ async def handle_alert(event: AlertEvent) -> None:
                 event=event,
                 recipient=cfg.telegram_chat_id,
                 reason=DLQReason.HISTORY_WRITE,
+                error=str(exc),
+                attempt_count=0,
+            )
+        return
+
+    text = format_message(event)
+    if _rate_limiter is not None:
+        await _rate_limiter.acquire(cfg.telegram_chat_id)
+    try:
+        await _telegram.send_message(cfg.telegram_chat_id, text)
+    except TelegramError as exc:
+        logger.error(
+            "alert_dropped_telegram_failure",
+            alert_id=event.alert_id,
+            symbol=event.symbol,
+            rule=event.rule_name.value,
+        )
+        if _dlq is not None:
+            await _dlq.publish_failure(
+                event=event,
+                recipient=cfg.telegram_chat_id,
+                reason=_classify_failure(exc),
                 error=str(exc),
                 attempt_count=cfg.telegram_retry_attempts,
             )
