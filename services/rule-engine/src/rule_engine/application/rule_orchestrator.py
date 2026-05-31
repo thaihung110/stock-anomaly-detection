@@ -6,7 +6,6 @@ import structlog
 from rule_engine.config import Settings
 from rule_engine.domain.rules import ALL_RULES, RuleFn
 from rule_engine.domain.schema import AlertEvent, QuoteEvent
-from rule_engine.metrics import alerts_fired_total
 
 logger = structlog.get_logger(__name__)
 
@@ -38,9 +37,6 @@ class RuleOrchestrator:
             if alert is None:
                 continue
             await publisher.publish(alert)
-            alerts_fired_total.labels(
-                rule_name=alert.rule_name.value, severity=alert.severity.value
-            ).inc()
             logger.info(
                 "alert_fired",
                 symbol=alert.symbol,

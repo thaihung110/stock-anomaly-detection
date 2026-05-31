@@ -5,18 +5,11 @@ from collections.abc import AsyncIterator
 import structlog
 from fastapi import FastAPI
 from faststream.kafka.fastapi import KafkaRouter
-from prometheus_client import make_asgi_app
 
 from rule_engine.config import Settings
 from rule_engine.infrastructure.context_loader import load_context
 from rule_engine.infrastructure.db.client import DbClient
 from rule_engine.infrastructure.db.repository import UserAlertRepository
-from rule_engine.metrics import (
-    context_reload_total,
-    context_symbols_loaded,
-    quotes_processed_total,
-    quotes_skipped_total,
-)
 from rule_engine.application.rule_orchestrator import RuleOrchestrator
 from rule_engine.domain.schema import QuoteEvent, ReloadResponse
 from rule_engine.application.user_alert_processor import UserAlertProcessor
@@ -40,7 +33,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global _context_cache, _db_client, _orchestrator, _alert_processor
 
     _context_cache = await asyncio.to_thread(load_context, cfg)
-    context_symbols_loaded.set(len(_context_cache))
 
     _db_client = DbClient(cfg.pg_dsn)
     await _db_client.connect()
@@ -63,15 +55,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(lifespan=lifespan)
 app.include_router(router)
-app.mount("/metrics", make_asgi_app())
 
 
 @router.subscriber(cfg.kafka_input_topic)
 async def handle_quote(event: QuoteEvent) -> None:
-    quotes_processed_total.inc()
     ctx = _context_cache.get(event.symbol)
     if ctx is None:
-        quotes_skipped_total.inc()
         logger.debug("symbol_not_in_context", symbol=event.symbol)
         return
 
@@ -93,10 +82,20 @@ async def reload_rules() -> ReloadResponse:
     global _context_cache
 
     async with _reload_lock:
-        new_context = await asyncio.to_thread(load_context, cfg)
+        try:
+            new_context = await asyncio.to_thread(load_context, cfg)
+        except Exception as exc:
+            logger.error("context_reload_load_failed", error=str(exc))
+            return ReloadResponse(status="error", symbol_count=len(_context_cache))
+
+        if not new_context:
+            logger.warning(
+                "context_reload_empty_skipped",
+                current_symbol_count=len(_context_cache),
+            )
+            return ReloadResponse(status="error", symbol_count=len(_context_cache))
+
         _context_cache = new_context
-        context_reload_total.inc()
-        context_symbols_loaded.set(len(new_context))
 
     rule_count = 0
     if _alert_processor is not None:
