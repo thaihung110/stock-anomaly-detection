@@ -1,4 +1,4 @@
-from pydantic import SecretStr, model_validator
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,13 +10,14 @@ class Settings(BaseSettings):
     kafka_input_topic: str = "alerts.confirmed"
     kafka_consumer_group: str = "alert-service"
 
-    # PostgreSQL — assembled into DSN at startup if not provided.
+    # PostgreSQL — passed individually to asyncpg.create_pool() so the
+    # password stays inside SecretStr and never leaks into a plain string field
+    # (logs, repr, error messages).
     pg_host: str = "localhost"
     pg_port: int = 5432
     pg_database: str = "stock_anomaly"
     pg_user: str = "stock_user"
     pg_password: SecretStr = SecretStr("")
-    pg_dsn: str = ""
 
     # Phase 3 — fan-out config
     # When False (default), system alerts go only to the admin chat (legacy
@@ -27,7 +28,10 @@ class Settings(BaseSettings):
 
     # Telegram
     telegram_bot_token: str
-    telegram_chat_id: int
+    # Accepts an integer chat_id (private chats, groups) or a @username string
+    # (public channels).  Using int | str avoids a ValidationError when the
+    # value is set to a channel username in the environment.
+    telegram_chat_id: int | str
     telegram_api_base_url: str = "https://api.telegram.org"
     telegram_retry_attempts: int = 3
     telegram_retry_base_delay: float = 1.0  # seconds, doubled each retry
@@ -61,12 +65,3 @@ class Settings(BaseSettings):
 
     # HTTP server
     app_port: int = 8080
-
-    @model_validator(mode="after")
-    def build_pg_dsn(self) -> "Settings":
-        if not self.pg_dsn:
-            self.pg_dsn = (
-                f"postgresql://{self.pg_user}:{self.pg_password.get_secret_value()}"
-                f"@{self.pg_host}:{self.pg_port}/{self.pg_database}"
-            )
-        return self

@@ -84,7 +84,13 @@ class SubscriberCache:
                 self._state.inflight[key] = fut
 
         if existing is not None:
-            return await fut
+            try:
+                return await fut
+            except asyncio.CancelledError:
+                if fut.cancelled():
+                    # Future was cancelled by invalidate(); retry with a fresh fetch.
+                    return await self.get(symbol)
+                raise
 
         # We own the fetch for this symbol — run outside the lock.
         try:
@@ -92,23 +98,41 @@ class SubscriberCache:
         except Exception as exc:
             async with self._lock:
                 self._state.inflight.pop(key, None)
-            if not fut.cancelled():
+            if not fut.done():
                 fut.set_exception(exc)
             raise
         else:
             async with self._lock:
                 self._state.inflight.pop(key, None)
-                self._state.entries[key] = _Entry(
-                    subscribers=subscribers, fetched_at=time.monotonic()
-                )
-            fut.set_result(subscribers)
+                if not fut.cancelled():
+                    # Only cache if invalidate() did not fire mid-fetch.
+                    self._state.entries[key] = _Entry(
+                        subscribers=subscribers, fetched_at=time.monotonic()
+                    )
+            if not fut.cancelled():
+                fut.set_result(subscribers)
             return subscribers
 
     def invalidate(self) -> None:
-        """Drop every cached entry. Called by ``/internal/reload-subscribers``."""
+        """Drop every cached entry and cancel in-flight fetches.
+
+        Called by ``/internal/reload-subscribers`` whenever the Telegram bot
+        mutates ``user_preferences`` or ``user_watchlist``.  Cancelling
+        in-flight futures prevents a pre-mutation DB result from repopulating
+        the cache for a full TTL after the invalidation signal arrives.
+        """
         size = len(self._state.entries)
+        inflight_count = len(self._state.inflight)
         self._state.entries.clear()
-        logger.info("subscriber_cache_invalidated", evicted=size)
+        for fut in self._state.inflight.values():
+            if not fut.done():
+                fut.cancel()
+        self._state.inflight.clear()
+        logger.info(
+            "subscriber_cache_invalidated",
+            evicted=size,
+            cancelled_inflight=inflight_count,
+        )
 
     @property
     def stats(self) -> dict[str, int]:

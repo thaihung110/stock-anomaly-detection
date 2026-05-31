@@ -64,4 +64,4 @@ class FailedAlertEnvelope(BaseModel):
     reason: DLQReason
     error: str
     failed_at_ms: int = Field(..., ge=1_000_000_000_000)
-    attempt_count: int = Field(..., ge=1)
+    attempt_count: int = Field(..., ge=0)
