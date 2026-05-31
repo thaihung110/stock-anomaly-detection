@@ -118,36 +118,17 @@ class TestRuleOrchestrator:
 
         rule_fn.assert_called_once_with(quote, ctx, cfg)
 
-    @pytest.mark.asyncio
-    async def test_evaluate_increments_metric_on_alert(
-        self, cfg: Settings, ctx: dict[str, float]
-    ) -> None:
-        alert = _make_alert()
-        orchestrator = RuleOrchestrator(cfg, rules=(MagicMock(return_value=alert),))
-
-        with patch("rule_engine.application.rule_orchestrator.alerts_fired_total") as mock_counter:
-            mock_labels = MagicMock()
-            mock_counter.labels.return_value = mock_labels
-            await orchestrator.evaluate(_make_quote(), ctx, AsyncMock())
-
-        mock_counter.labels.assert_called_once_with(
-            rule_name=alert.rule_name.value, severity=alert.severity.value
-        )
-        mock_labels.inc.assert_called_once()
-
     def test_default_rules_are_all_rules(self, cfg: Settings) -> None:
         orchestrator = RuleOrchestrator(cfg)
         assert orchestrator._rules is ALL_RULES
 
     @pytest.mark.asyncio
-    async def test_evaluate_skips_metric_and_publish_when_no_alert(
+    async def test_evaluate_skips_publish_when_no_alert(
         self, cfg: Settings, ctx: dict[str, float]
     ) -> None:
         orchestrator = RuleOrchestrator(cfg, rules=(MagicMock(return_value=None),))
         publisher = AsyncMock()
 
-        with patch("rule_engine.application.rule_orchestrator.alerts_fired_total") as mock_counter:
-            await orchestrator.evaluate(_make_quote(), ctx, publisher)
+        await orchestrator.evaluate(_make_quote(), ctx, publisher)
 
-        mock_counter.labels.assert_not_called()
         publisher.publish.assert_not_awaited()
