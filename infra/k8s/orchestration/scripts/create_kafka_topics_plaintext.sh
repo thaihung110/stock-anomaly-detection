@@ -31,13 +31,17 @@ RETENTION_MS_DEFAULT="${RETENTION_MS_DEFAULT:-604800000}"
 # yfinance-quotes-producer   → raw.stock.quotes  → Rule Engine
 # finnhub-trades-producer    → raw.stock.trades  → trades-ohlcv-stream (Spark)
 # finnhub-news-producer      → raw.stock.news    → news-ingest-stream (Spark)
-# Rule Engine                → alerts.raw        → Alert Service
-# LLM Agent (future)         → alerts.confirmed  → Alert Service (future)
+# Rule Engine (system rules) → alerts.raw        → Alert Service  (ADR-002: nối thẳng, bypass LLM)
+# Rule Engine (custom rules) → alerts.user       → Alert Service  (ADR-001: SoC, custom delivery)
+# Alert Service (DLQ)        → alerts.failed     → Operator replay tooling
+# LLM Agent (future)         → alerts.confirmed  → Alert Service (future — khi LLM Agent sẵn sàng)
 V33_TOPICS=(
   "raw.stock.quotes"
   "raw.stock.trades"
   "raw.stock.news"
   "alerts.raw"
+  "alerts.user"
+  "alerts.failed"
   "alerts.confirmed"
 )
 

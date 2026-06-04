@@ -50,10 +50,13 @@ object SyncCustomAlertsPipeline {
     connProps.put("driver", "org.postgresql.Driver")
 
     logger.info(s"Reading user_alert_events since $since")
+    // Phase 3: include user_id so each custom-alert row in fact_alert_history
+    // carries its owner — required by the new `user_id` column added in the
+    // Iceberg ALTER (see docs/backend-redesign-plan.md Phase 3).
     spark.read
       .jdbc(cfg.jdbcUrl, "user_alert_events", connProps)
       .select(
-        "event_id", "symbol", "triggered_at",
+        "event_id", "user_id", "symbol", "triggered_at",
         "field_snapshot", "operator_snapshot", "threshold_snapshot", "triggered_value"
       )
       .filter(col("triggered_at") > lit(since))
@@ -75,7 +78,8 @@ object SyncCustomAlertsPipeline {
       col("triggered_value").cast("double"),
       col("threshold_snapshot").cast("double").as("threshold"),
       lit("user_custom").as("alert_source"),
-      date_format(current_timestamp(), "yyyy-MM-dd'T'HH:mm:ss'Z'").as("written_at")
+      date_format(current_timestamp(), "yyyy-MM-dd'T'HH:mm:ss'Z'").as("written_at"),
+      col("user_id").cast("string").as("user_id")
     )
 
   def writeToIceberg(df: DataFrame, cfg: AppConfig): Unit = {

@@ -247,3 +247,77 @@ Lưu ý:
 - Ingress trỏ tới API server (Airflow 3.x không dùng webserver riêng).
 - Đảm bảo có StorageClass `standard` và Ingress Controller `nginx`.
 - Để scale worker/scheduler: chỉnh `workers.replicas`, `scheduler.replicas` trong `config/airflow.yaml`.
+
+#### Prerequisite: SSH secret cho git-sync (BẮT BUỘC trước khi cài)
+
+Các pods `worker`, `triggerer`, `dag-processor` dùng git-sync để clone DAGs qua SSH từ `git@github.com:thaihung110/airflow-dags.git`. Nếu secret `airflow-ssh-secret` chưa tồn tại, 3 pods này sẽ bị stuck ở `Init:0/2` với lỗi:
+
+```
+MountVolume.SetUp failed for volume "git-sync-ssh-key": secret "airflow-ssh-secret" not found
+```
+
+Secret này **không được tạo bởi Helm** — phải tạo thủ công trước khi chạy `install_airflow.sh`:
+
+```bash
+# 1. Tạo SSH keypair cho git-sync (không passphrase)
+ssh-keygen -t ed25519 -C "airflow-gitsync" -f ~/.ssh/airflow_gitsync -N ""
+
+# 2. Tạo secret trong namespace
+kubectl create secret generic airflow-ssh-secret \
+  --from-file=gitSshKey=/home/hungvt/.ssh/airflow_gitsync \
+  -n stock-anomaly-detection
+
+# 3. Lấy public key để add vào GitHub
+cat ~/.ssh/airflow_gitsync.pub
+```
+
+Sau đó add public key vào GitHub repo `thaihung110/airflow-dags`:
+
+- Repo → **Settings** → **Deploy keys** → **Add deploy key**
+- Paste nội dung public key, tên: `airflow-gitsync`
+- Chỉ cần **Read access**
+
+Sau khi secret tồn tại, các pods sẽ tự khởi động lại và hoàn thành init containers.
+
+---
+
+### RBAC
+
+RBAC resources are in `rbac/` — required for Airflow to submit and monitor Spark jobs via the Spark Operator.
+
+#### Apply
+
+```bash
+kubectl apply -f infra/k8s/orchestration/rbac/airflow-spark-rbac.yaml
+kubectl apply -f infra/k8s/orchestration/rbac/spark-submit-clusterrole.yaml
+kubectl apply -f infra/k8s/orchestration/rbac/spark-submit-clusterrolebinding.yaml
+```
+
+#### Resources
+
+**`airflow-spark-rbac.yaml`** — Role + RoleBinding scoped to `stock-anomaly-detection` namespace.
+
+- Role `airflow-spark-operator`: grants `create/get/list/watch/delete/patch/update` on `sparkapplications` (Spark Operator CRD).
+- Bound to: `openhouse-airflow-worker`, `openhouse-airflow-triggerer` (namespace `stock-anomaly-detection`).
+
+**`spark-submit-clusterrole.yaml`** — ClusterRole `spark-submit-role` with cluster-wide permissions:
+
+| Resource | Verbs |
+|---|---|
+| `sparkapplications` (sparkoperator.k8s.io) | create, get, list, watch, update, patch, delete |
+| `pods`, `pods/log` | get, list, watch |
+| `services` | get, list |
+| `configmaps` | get, list |
+
+**`spark-submit-clusterrolebinding.yaml`** — Binds `spark-submit-role` to:
+
+| ServiceAccount | Namespace | Purpose |
+|---|---|---|
+| `openhouse-spark-operator-spark` | `default` | Spark Operator submitter |
+| `openhouse-airflow-worker` | `default` | Airflow Worker (SparkKubernetesOperator) |
+| `openhouse-airflow-triggerer` | `default` | Airflow Triggerer (async lifecycle monitoring) |
+
+#### Why two sets of RBAC?
+
+- `airflow-spark-rbac.yaml` (Role/RoleBinding) grants namespace-scoped access in `stock-anomaly-detection` where Spark jobs actually run.
+- `spark-submit-clusterrole.yaml` + `spark-submit-clusterrolebinding.yaml` (ClusterRole/ClusterRoleBinding) grant cluster-wide access so Airflow workers in the `default` namespace can also manage SparkApplications across namespaces.

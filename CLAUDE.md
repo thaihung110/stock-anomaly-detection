@@ -10,7 +10,7 @@
 
 | Layer         | Technology                        | Role                                                                                               |
 | ------------- | --------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Streaming     | Kafka                             | Topics: `raw.stock.quotes`, `raw.stock.trades`, `raw.stock.news`, `alerts.raw`, `alerts.confirmed` |
+| Streaming     | Kafka                             | Topics: `raw.stock.quotes`, `raw.stock.trades`, `raw.stock.news`, `alerts.raw`, `alerts.user`, `alerts.confirmed`, `alerts.failed` |
 | Microservices | FastStream (async Python)         | Rule Engine, LLM Agent, Alert Service, data producers                                              |
 | LLM           | LangGraph + Gemini 2.5 Flash-Lite | Parallel news research + data crosscheck                                                           |
 | Batch         | Apache Spark (Scala)              | Daily rolling stats, tick aggregation, OLTP→Iceberg sync                                           |
@@ -112,9 +112,9 @@ On `/setalert`: INSERT → PostgreSQL, then POST `/internal/reload-user-rules` t
 
 ## Services
 
-1. **Rule Engine** — consumes `raw.stock.quotes`; loads context + user rules at startup; publishes `alerts.raw`; exposes `POST /internal/reload-user-rules`
-2. **LLM Agent** — consumes `alerts.raw`; LangGraph pipeline; publishes `alerts.confirmed`
-3. **Alert Service** — consumes `alerts.confirmed`; formats + sends Telegram; logs to `fact_alert_history`
+1. **Rule Engine** — consumes `raw.stock.quotes`; loads context + user rules at startup; publishes system anomalies to `alerts.raw` and custom alerts to `alerts.user`; INSERT `user_alert_events` (immutable log); exposes `POST /internal/reload-user-rules`. **No Telegram client** (ADR-001).
+2. **LLM Agent** — _(not yet deployed)_ — will consume `alerts.raw`; LangGraph pipeline; publishes `alerts.confirmed`. Until deployed, `alert-service` consumes `alerts.raw` directly (ADR-002).
+3. **Alert Service** — **sole Telegram sender** (ADR-001); consumes `alerts.raw` (system) + `alerts.user` (custom); 1 shared rate-limiter + 1 DLQ for both paths; logs system alerts to `fact_alert_history` (custom rows go via Spark bridge).
 4. **Telegram Bot** — handles commands; reads/writes PostgreSQL; calls Rule Engine on rule changes
 5. **Spark Batch** — `build_rule_context`, `sync_custom_alerts`, Finnhub tick aggregator, NewsAPI writer
 6. **Producers** — yfinance daily loader, Finnhub WebSocket → Kafka, NewsAPI poller

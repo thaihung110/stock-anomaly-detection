@@ -62,6 +62,8 @@ spec:
         value: "gravitino_catalog.gold.dim_symbol"
       - name: OUTPUT_TABLE
         value: "gravitino_catalog.gold.rule_engine_context"
+      - name: AS_OF_DATE_KEY
+        value: "20260522"
       - name: MINIO_ACCESS_KEY
         valueFrom:
           secretKeyRef:

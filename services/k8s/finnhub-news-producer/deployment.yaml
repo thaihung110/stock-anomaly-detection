@@ -14,10 +14,6 @@ spec:
     metadata:
       labels:
         app: finnhub-news-producer
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8000"
-        prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 30
       initContainers:
@@ -35,9 +31,6 @@ spec:
         - name: finnhub-news-producer
           image: hungvt0110/finnhub-news-producer:v0.1
           imagePullPolicy: Always
-          ports:
-            - containerPort: 8000
-              name: metrics
           env:
             - name: FINNHUB_API_KEY
               valueFrom:
@@ -52,8 +45,6 @@ spec:
               value: "300"
             - name: LOOKBACK_DAYS
               value: "2"
-            - name: METRICS_PORT
-              value: "8000"
           resources:
             requests:
               memory: "128Mi"
@@ -61,15 +52,3 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "250m"
-          livenessProbe:
-            httpGet:
-              path: /metrics
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 30
-          readinessProbe:
-            httpGet:
-              path: /metrics
-              port: 8000
-            initialDelaySeconds: 5
-            periodSeconds: 10

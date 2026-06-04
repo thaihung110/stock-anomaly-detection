@@ -6,8 +6,11 @@ metadata:
   namespace: stock-anomaly-detection
 data:
   KAFKA_BOOTSTRAP_SERVERS: "openhouse-kafka:9092"
-  KAFKA_INPUT_TOPIC: "alerts.confirmed"
+  # ADR-002: bypass LLM agent (not yet deployed) — consume from alerts.raw directly
+  KAFKA_INPUT_TOPIC: "alerts.raw"
   KAFKA_CONSUMER_GROUP: "alert-service"
+  KAFKA_USER_ALERT_TOPIC: "alerts.user"
+  KAFKA_USER_CONSUMER_GROUP: "alert-service-user"
   ICEBERG_CATALOG_NAME: "stock_catalog"
   ICEBERG_CATALOG_URI: "http://openhouse-gravitino:9001/iceberg/"
   ICEBERG_OAUTH2_SERVER_URI: "http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token"
@@ -20,6 +23,26 @@ data:
   # Phase 3 — fan-out feature flag (must be "true" for multi-user delivery)
   ENABLE_FANOUT: "true"
   SUBSCRIBER_CACHE_TTL_SEC: "60"
+  # PostgreSQL connection (required when ENABLE_FANOUT=true)
+  PG_HOST: "openhouse-postgresql-primary"
+  PG_PORT: "5432"
+  PG_DATABASE: "stock_anomaly"
+  PG_USER: "stock_user"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-service
+  namespace: stock-anomaly-detection
+  labels:
+    app: alert-service
+spec:
+  selector:
+    app: alert-service
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,7 +63,7 @@ spec:
     spec:
       containers:
         - name: alert-service
-          image: hungvt0110/alert-service:v0.2
+          image: hungvt0110/alert-service:v0.6
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -76,4 +99,5 @@ spec:
 #     --from-literal=TELEGRAM_CHAT_ID="<chat_id>" \
 #     --from-literal=ICEBERG_OAUTH2_CREDENTIAL="<client_id>:<client_secret>" \
 #     --from-literal=S3_ACCESS_KEY_ID="<minio_access_key>" \
-#     --from-literal=S3_SECRET_ACCESS_KEY="<minio_secret_key>"
+#     --from-literal=S3_SECRET_ACCESS_KEY="<minio_secret_key>" \
+#     --from-literal=PG_PASSWORD="<pg_password>"

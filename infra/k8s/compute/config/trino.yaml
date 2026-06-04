@@ -338,7 +338,16 @@ additionalNodeProperties: []
 # ```
 
 additionalConfigProperties:
-  - catalog.management=dynamicf
+  - http-server.process-forwarded=true
+  - http-server.authentication.type=OAUTH2
+  - internal-communication.shared-secret=oZIbYoTzj5laKVBHetEGTVWvz4i4rr0mbKQkzq0Iqd8
+  - http-server.authentication.oauth2.oidc.discovery=false
+  - http-server.authentication.oauth2.issuer=https://openhouse.keycloak.test/realms/iceberg
+  - http-server.authentication.oauth2.auth-url=https://openhouse.keycloak.test/realms/iceberg/protocol/openid-connect/auth
+  - http-server.authentication.oauth2.token-url=http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token
+  - http-server.authentication.oauth2.jwks-url=http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/certs
+  - http-server.authentication.oauth2.client-id=trino
+  - http-server.authentication.oauth2.client-secret=SQVNGn6fth0uwT00sFsx9yv9eydPpS8f
 # additionalConfigProperties -- [Additional config
 # properties](https://trino.io/docs/current/admin/properties.html).
 # @raw
@@ -435,6 +444,59 @@ catalogs:
   tpcds: |
     connector.name=tpcds
     tpcds.splits-per-node=4
+  # ─── Iceberg catalogs via Gravitino REST (port 9001) ───────────────────────
+  # Gravitino Iceberg REST endpoint: http://openhouse-gravitino:9001
+  # OAuth2 credential: spark client in Keycloak realm "iceberg"
+  # Metalake: stock_metalake | warehouse = stock_metalake/<catalog>
+  # ──────────────────────────────────────────────────────────────────────────
+  bronze: |
+    connector.name=iceberg
+    iceberg.catalog.type=rest
+    iceberg.rest-catalog.uri=http://openhouse-gravitino.stock-anomaly-detection.svc.cluster.local:9001/iceberg/
+    iceberg.rest-catalog.warehouse=bronze
+    iceberg.rest-catalog.security=OAUTH2
+    iceberg.rest-catalog.oauth2.credential=spark:zwUFuidO5PC30BhcK6f5uYOO8rkdqLG5
+    iceberg.rest-catalog.oauth2.server-uri=http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token
+    iceberg.rest-catalog.oauth2.scope=gravitino
+    iceberg.file-format=PARQUET
+    fs.native-s3.enabled=true
+    s3.endpoint=http://openhouse-minio:9000
+    s3.region=us-east-1
+    s3.aws-access-key=admin
+    s3.aws-secret-key=admin123
+    s3.path-style-access=true
+  silver: |
+    connector.name=iceberg
+    iceberg.catalog.type=rest
+    iceberg.rest-catalog.uri=http://openhouse-gravitino.stock-anomaly-detection.svc.cluster.local:9001/iceberg/
+    iceberg.rest-catalog.warehouse=silver
+    iceberg.rest-catalog.security=OAUTH2
+    iceberg.rest-catalog.oauth2.credential=spark:zwUFuidO5PC30BhcK6f5uYOO8rkdqLG5
+    iceberg.rest-catalog.oauth2.server-uri=http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token
+    iceberg.rest-catalog.oauth2.scope=gravitino
+    iceberg.file-format=PARQUET
+    fs.native-s3.enabled=true
+    s3.endpoint=http://openhouse-minio:9000
+    s3.region=us-east-1
+    s3.aws-access-key=admin
+    s3.aws-secret-key=admin123
+    s3.path-style-access=true
+  gold: |
+    connector.name=iceberg
+    iceberg.catalog.type=rest
+    iceberg.rest-catalog.uri=http://openhouse-gravitino.stock-anomaly-detection.svc.cluster.local:9001/iceberg/
+    iceberg.rest-catalog.warehouse=gold
+    iceberg.rest-catalog.security=OAUTH2
+    iceberg.rest-catalog.oauth2.credential=spark:zwUFuidO5PC30BhcK6f5uYOO8rkdqLG5
+    iceberg.rest-catalog.oauth2.server-uri=http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token
+    iceberg.rest-catalog.oauth2.scope=gravitino
+    iceberg.file-format=PARQUET
+    fs.native-s3.enabled=true
+    s3.endpoint=http://openhouse-minio:9000
+    s3.region=us-east-1
+    s3.aws-access-key=admin
+    s3.aws-secret-key=admin123
+    s3.path-style-access=true
 # catalogs -- Configure
 # [catalogs](https://trino.io/docs/current/installation/deployment.html#catalog-properties).
 # @raw
@@ -709,35 +771,14 @@ coordinator:
 
   affinity: {}
 
-  additionalConfigFiles:
-    catalog-store.properties: |
-      catalog.config-dir=/etc/trino/dynamic-catalog
+  additionalConfigFiles: {}
   # coordinator.additionalConfigFiles -- Additional config files placed in the default configuration directory.
-  # Supports templating the files' contents with `tpl`.
-  # @raw
-  # Example:
-  # ```yaml
-  # secret.txt: |
-  #   secret-value={{- .Values.someValue }}
-  # ```
 
-  additionalVolumes:
-    - name: catalogs
-      persistentVolumeClaim:
-        claimName: catalogs-pvc
-
+  additionalVolumes: []
   # coordinator.additionalVolumes -- One or more additional volumes to add to the coordinator.
-  # @raw
-  # Example:
-  # ```yaml
-  #  - name: extras
-  #    emptyDir: {}
-  # ```
 
-  additionalVolumeMounts:
-    - name: catalogs
-      mountPath: /etc/trino/dynamic-catalog
-      readOnly: false
+  additionalVolumeMounts: []
+  # coordinator.additionalVolumeMounts -- One or more additional volume mounts to add to the coordinator.
   # coordinator.additionalVolumeMounts -- One or more additional volume mounts to add to the coordinator.
   # @raw
   # Example:
@@ -1172,24 +1213,21 @@ serviceMonitor:
 commonLabels: {}
 
 ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-  hosts: []
-  # ingress.hosts -- [Ingress
-  # rules](https://kubernetes.io/docs/concepts/services-networking/ingress/#ingress-rules).
-  # @raw
-  # Example:
-  # ```yaml
-  #  - host: trino.example.com
-  #    paths:
-  #      - path: /
-  #        pathType: ImplementationSpecific
-  # ```
-  tls: []
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+  hosts:
+    - host: openhouse.trino.test
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
   # ingress.tls -- Ingress
   # [TLS](https://kubernetes.io/docs/concepts/services-networking/ingress/#tls)
   # configuration.
+  # Note: Add TLS here if OAuth2 browser-based auth flow is needed.
   # @raw
   # Example:
   # ```yaml
@@ -1197,6 +1235,7 @@ ingress:
   #    hosts:
   #      - chart-example.local
   # ```
+  tls: []
 
 networkPolicy:
   # networkPolicy.enabled -- Set to true to enable Trino pod protection with a

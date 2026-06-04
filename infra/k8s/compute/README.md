@@ -1,116 +1,96 @@
 # Compute Infrastructure
 
-This directory manages compute resources for the data platform, primarily **Spark Operator** and **Argo CD** deployments on Kubernetes.
-
-## Configuration Files Comparison
-
-### `config/spark.yaml` vs `helm/spark-operator/values.yaml`
-
-Both files are **identical** - they contain the same Spark Operator Helm values configuration. The key difference is their **usage context**:
-
-- **`config/spark.yaml`**: Custom configuration file used during deployment via `install_spark_operators.sh` to override default Helm chart values
-- **`helm/spark-operator/values.yaml`**: Default values file included in the Spark Operator Helm chart
-
-**Key configurations include:**
-
-- **Controller**: 1 replica, 10 workers, info-level logging with console encoding
-- **Webhook**: Enabled with 1 replica, port 9443, 10s timeout
-- **Leader Election**: Enabled for both controller and webhook
-- **Spark Jobs**: Allowed in `default` namespace only
-- **Prometheus Metrics**: Enabled on port 8080 at `/metrics` endpoint
-- **Batch Scheduler**: Disabled
-- **Cert Manager**: Disabled (webhook uses self-signed certificates)
+This directory manages compute resources for the data platform, primarily **Spark Operator** on Kubernetes.
 
 ## Directory Structure
 
-### `/applications`
-
-Contains Spark application manifests organized by type. Currently includes `/spark/legacy` subfolder with `taxi-data-ingestion.yaml` for batch ingestion jobs.
-
 ### `/config`
 
-Helm values configuration files for deployments:
-
-- `argo.yaml`: Argo CD configuration
-- `spark.yaml`: Spark Operator configuration (overrides default Helm values)
+- `spark.yaml` — Helm values for Spark Operator (overrides default chart values)
+- `spark-serviceaccount-rbac.yaml` — ServiceAccount + RBAC for Spark applications
 
 ### `/debug`
 
-Debug resources for troubleshooting deployments. Contains `spark_controller.yaml` for debugging Spark Operator controller issues.
+Debug resources for troubleshooting:
 
-### `/helm`
-
-Helm chart repositories:
-
-- `argo-cd/`: Argo CD Helm chart
-- `spark-operator/`: Spark Operator Helm chart
+- `spark_controller.yaml` — debug pod cho Spark Operator controller
+- `gravitino-iceberg-debug-pod.yaml` — debug pod cho Gravitino Iceberg REST
 
 ### `/scripts`
 
-Automation scripts for managing compute infrastructure (detailed below).
+Automation scripts for managing compute infrastructure.
 
 ### `/test_template`
 
-Template output directory for testing Helm chart rendering without deployment:
+Template output for testing Helm chart rendering without deploying:
 
-- `argocd_template.yaml`: Generated Argo CD manifests
-- `spark_operator_template.yaml`: Generated Spark Operator manifests
+- `spark_operator_template.yaml` — rendered Spark Operator manifests
+
+---
+
+## Cài đặt Spark Operator
+
+### 1. Apply ServiceAccount và RBAC
+
+Trước khi chạy bất kỳ SparkApplication nào, phải tạo ServiceAccount `spark` và RBAC permissions trong namespace `stock-anomaly-detection`:
+
+```bash
+kubectl apply -f config/spark-serviceaccount-rbac.yaml
+```
+
+File này tạo:
+- **ServiceAccount** `spark` trong namespace `stock-anomaly-detection`
+- **Role** `spark-app-role` với quyền quản lý pods, services, configmaps, PVC, events, và read secrets
+- **RoleBinding** `spark-app-rolebinding` gắn role vào serviceaccount
+
+> **Lưu ý:** Các SparkApplication manifest đều khai báo `serviceAccount: spark` trong driver spec. Nếu bỏ qua bước này, driver pod sẽ fail với lỗi `forbidden`.
+
+### 2. Cài đặt Spark Operator
+
+```bash
+./scripts/install_spark_operators.sh
+```
+
+Lệnh này chạy:
+```bash
+helm upgrade --install openhouse-spark-operator helm/spark-operator -f config/spark.yaml
+```
+
+**Cấu hình chính trong `config/spark.yaml`:**
+
+- **Controller**: 1 replica, 10 workers, info-level logging
+- **Webhook**: enabled, port 9443, timeout 10s
+- **Leader Election**: enabled cho controller và webhook
+- **Prometheus Metrics**: enabled tại port 8080, endpoint `/metrics`
+- **Cert Manager**: disabled (dùng self-signed certificates)
+
+### 3. Gỡ cài đặt Spark Operator
+
+```bash
+./scripts/uninstall_spark_operators.sh
+```
+
+---
 
 ## Scripts Guide
 
-### Installation Scripts
+| Script | Mô tả |
+|--------|-------|
+| `install_spark_operators.sh` | Cài/upgrade Spark Operator qua Helm |
+| `uninstall_spark_operators.sh` | Xóa Spark Operator Helm release |
+| `template_spark.sh` | Render manifests ra `test_template/` để preview |
 
-**`install_argocd.sh`**
+---
 
-- Installs/upgrades Argo CD using Helm with custom configuration
-- Command: `helm upgrade --install openhouse-argocd helm/argo-cd -f config/argo.yaml`
+## Kiểm tra sau khi cài đặt
 
-**`install_spark_operators.sh`**
+```bash
+# Kiểm tra Spark Operator đang chạy
+kubectl get pods -n stock-anomaly-detection
 
-- Installs/upgrades Spark Operator using Helm with custom configuration
-- Command: `helm upgrade --install openhouse-spark-operator helm/spark-operator -f config/spark.yaml`
+# Kiểm tra ServiceAccount đã được tạo
+kubectl get serviceaccount spark -n stock-anomaly-detection
 
-### Uninstallation Scripts
-
-**`uninstall_argocd.sh`**
-
-- Removes Argo CD Helm release
-- Command: `helm uninstall openhouse-argocd`
-
-**`uninstall_spark_operators.sh`**
-
-- Removes Spark Operator Helm release
-- Command: `helm uninstall openhouse-spark-operator`
-
-### Template Scripts
-
-**`template_argocd.sh`**
-
-- Renders Argo CD manifests to `test_template/argocd_template.yaml` for preview without deploying
-
-**`template_spark.sh`**
-
-- Renders Spark Operator manifests to `test_template/spark_operator_template.yaml` for preview without deploying
-
-### Spark Job Management Scripts
-
-**`create_spark_manifests_configmap.sh`**
-
-- Creates/updates ConfigMap `spark-manifests` containing `taxi-data-ingestion.yaml`
-- Mounted into Airflow pods for DAG access to SparkApplication specs
-- Namespace: `default`
-
-### Streaming Spark Job Scripts
-
-**`start_load_crypto_bronze.sh`**
-
-- Deploys crypto bronze data ingestion SparkApplication
-- Checks for existing jobs (prompts for deletion if found)
-- Displays status and useful kubectl commands for monitoring driver/executor logs
-
-**`stop_load_crypto_bronze.sh`**
-
-- Deletes crypto bronze data ingestion SparkApplication
-- Shows current job status before deletion
-- Confirms deletion for running/submitted jobs
-- Waits for pod cleanup
+# Kiểm tra RBAC
+kubectl get role,rolebinding -n stock-anomaly-detection
+```

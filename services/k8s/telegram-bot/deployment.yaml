@@ -5,14 +5,19 @@ metadata:
   name: telegram-bot-config
   namespace: stock-anomaly-detection
 data:
-  WEBHOOK_HOST: "https://REPLACE_WITH_INGRESS_HOST"  # replace before deploy
+  # Patch this value after starting ngrok:
+  #   kubectl patch configmap telegram-bot-config -n stock-anomaly-detection \
+  #     --type merge -p '{"data":{"WEBHOOK_HOST":"https://<ngrok-url>.ngrok-free.dev"}}'
+  WEBHOOK_HOST: "https://choosing-eastward-unsliced.ngrok-free.dev"
   WEBHOOK_PATH: "/webhook"
   APP_PORT: "8080"
-  PG_HOST: "openhouse-postgresql"
+  PG_HOST: "openhouse-postgresql-primary"
   PG_PORT: "5432"
   PG_DATABASE: "stock_anomaly"
   PG_USER: "stock_user"
   RULE_ENGINE_URL: "http://rule-engine:8080"
+  # Phase 3 — alert-service URL for cache reload after watchlist/preference mutations
+  ALERT_SERVICE_URL: "http://alert-service:8080"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -33,7 +38,7 @@ spec:
     spec:
       containers:
         - name: telegram-bot
-          image: hungvt0110/telegram-bot:v0.1
+          image: hungvt0110/telegram-bot:v0.3
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -42,6 +47,9 @@ spec:
                 name: telegram-bot-config
             - secretRef:
                 name: telegram-bot-secret
+          env:
+            - name: PG_DSN
+              value: "postgresql://$(PG_USER):$(PG_PASSWORD)@$(PG_HOST):$(PG_PORT)/$(PG_DATABASE)"
           resources:
             requests:
               cpu: "50m"
@@ -49,6 +57,16 @@ spec:
             limits:
               cpu: "200m"
               memory: "256Mi"
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
@@ -70,8 +88,9 @@ metadata:
   name: telegram-bot-ingress
   namespace: stock-anomaly-detection
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
+  ingressClassName: nginx
   rules:
     - http:
         paths:
@@ -82,13 +101,8 @@ spec:
                 name: telegram-bot
                 port:
                   number: 8080
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: telegram-bot-secret
-  namespace: stock-anomaly-detection
-type: Opaque
-stringData:
-  TELEGRAM_BOT_TOKEN: "REPLACE_ME"  # replace before deploy
-  PG_PASSWORD: "REPLACE_ME"         # replace before deploy
+# Secret 'telegram-bot-secret' must be created manually before deploying:
+#   kubectl create secret generic telegram-bot-secret \
+#     -n stock-anomaly-detection \
+#     --from-literal=TELEGRAM_BOT_TOKEN="<bot_token>" \
+#     --from-literal=PG_PASSWORD="<pg_password>"

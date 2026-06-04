@@ -29,11 +29,12 @@ object OhlcvPipeline {
     fetchBatchSize: Int,
     backfillYears: Int
   ): Unit = {
-    val today  = LocalDate.now()
-    val buffer = new ListBuffer[OhlcvRow]
+    val today       = LocalDate.now()
+    val buffer      = new ListBuffer[OhlcvRow]
     var totalFetched = 0
     var upToDate     = 0
     var noData       = 0
+    var symbolsSinceFlush = 0
 
     symbols.foreach { sym =>
       val from = watermarks.get(sym) match {
@@ -54,10 +55,16 @@ object OhlcvPipeline {
           logger.info(s"[$sym] No data returned ($from → $today)")
           noData += 1
         }
-        // Flush every fetchBatchSize symbols to bound driver memory
-        if (buffer.size >= fetchBatchSize * 300) {
-          mergeRows(spark, buffer.toList, outputTable)
-          buffer.clear()
+        symbolsSinceFlush += 1
+        // Flush every fetchBatchSize symbols to cap driver heap.
+        // A 20-year backfill yields ~5 k rows/symbol; at fetchBatchSize=10 that is
+        // ~50 k rows (~20 MB) per flush — well within the 512 m driver heap.
+        if (symbolsSinceFlush >= fetchBatchSize) {
+          if (buffer.nonEmpty) {
+            mergeRows(spark, buffer.toList, outputTable)
+            buffer.clear()
+          }
+          symbolsSinceFlush = 0
         }
       }
     }
