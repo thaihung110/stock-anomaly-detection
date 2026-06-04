@@ -48,10 +48,10 @@ object NewsPipeline {
         col("title"),
         col("description"),
         col("url"),
+        col("category"),
         col("published_at"),
         col("fetched_at"),
-        col("published_date"),
-        col("category")
+        col("published_date")
       )
 
   def write(transformed: DataFrame, config: AppConfig): StreamingQuery =

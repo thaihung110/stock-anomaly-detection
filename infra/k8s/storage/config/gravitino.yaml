@@ -440,7 +440,7 @@ additionalConfigItems:
   ## ══════════════════════════════════════════════════════════════════
   gravitino.iceberg-rest.gravitino-auth-type: "oauth2"
   gravitino.iceberg-rest.gravitino-oauth2.server-uri: "http://openhouse-keycloak"
-  gravitino.iceberg-rest.gravitino-oauth2.credential: "spark:NTa3QMwThYy3Tdv2jXECUZB5NNWZbB6s"
+  gravitino.iceberg-rest.gravitino-oauth2.credential: "spark:zwUFuidO5PC30BhcK6f5uYOO8rkdqLG5"
   gravitino.iceberg-rest.gravitino-oauth2.token-path: "realms/iceberg/protocol/openid-connect/token"
   gravitino.iceberg-rest.gravitino-oauth2.scope: "gravitino"
 

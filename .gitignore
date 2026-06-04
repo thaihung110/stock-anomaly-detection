@@ -57,3 +57,7 @@ docs/deployment-guide.md
 services/rule-engine/uv.lock
 .mcp.json
 pyrightconfig.json
+
+docs/book
+
+docs/backend-redesign-plan.md

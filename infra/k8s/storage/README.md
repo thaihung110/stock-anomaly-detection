@@ -59,20 +59,29 @@ Tạo 1 database primary và 1 database read. User: _postgres_, password: _admin
 Tạo thêm user, và database cho các thành phần trong hệ thống.
 
 ```postgresql
+-- Keycloak: xác thực cho Gravitino Web UI và Spark batch jobs
 create database keycloak;
 create user keycloak;
 alter user keycloak with encrypted password 'keycloak';
 alter database keycloak owner to keycloak;
 
-create database source_api;
-create user source_api;
-alter user source_api with encrypted password 'source_api';
-alter database source_api owner to source_api;
-
+-- Gravitino: metadata catalog backend
 create database gravitino_db;
 create user gravitino;
 alter user gravitino with encrypted password 'gravitino';
 alter database gravitino_db owner to gravitino;
+
+-- Iceberg REST catalog backend (dùng bởi Gravitino)
+create database iceberg_catalog_db;
+create user iceberg;
+alter user iceberg with encrypted password 'iceberg';
+alter database iceberg_catalog_db owner to iceberg;
+
+-- Stock Anomaly Detection: OLTP tables (users, user_alert_rules, user_alert_events, sync_watermarks)
+create database stock_anomaly;
+create user stock_user;
+alter user stock_user with encrypted password 'stock_user';
+alter database stock_anomaly owner to stock_user;
 ```
 
 ### Cài đặt Keycloak
@@ -193,7 +202,38 @@ Then add this scope to client `spark`:
 - Select: `sign`
 - Assigned type: **Default**
 
-**5. Create User**
+**5. Assign 'gravitino' Scope to 'spark' Client (Required for Iceberg REST)**
+
+This step is required for Gravitino's Iceberg REST service (port 9001) to authenticate with Gravitino API (port 8090) via dynamic catalog config.
+
+Gravitino uses `spark` client credentials with `scope=gravitino` to obtain a token. That token must contain `aud: gravitino` (added by the Audience Mapper on the `gravitino` scope). Without this, Gravitino API returns 401 → `ServiceFailureException`.
+
+> **Why Default, not Optional?**
+> Client Credentials flow (machine-to-machine) does not have a user to request scopes — only **Default** scopes are included automatically. Optional scopes are only included when explicitly requested by a user in Authorization Code flow.
+
+- Go to Client `spark` → **Client Scopes** → **Add client scope**
+- Select: `gravitino`
+- Assigned type: **Default**
+
+**6. Remove 'roles' scope from 'spark' client (Fix JWT aud claim)**
+
+Gravitino's `JwksTokenValidator` requires `aud` to be exactly `"gravitino"` (single string). Keycloak's built-in `roles` scope automatically adds `account` client to `aud`, producing `["gravitino", "account"]` — this causes:
+
+```
+JWKS JWT validation error: JWT aud claim has value [gravitino, account], must be [gravitino]
+```
+
+Fix: remove the `roles` scope from `spark` client's default scopes.
+
+- Go to Client `spark` → **Client Scopes**
+- In **Assigned Default Client Scopes**, find `roles`
+- Click `roles` → **Remove**
+
+After this, tokens issued for `spark` will have `"aud": "gravitino"` (single value) and Gravitino will accept them.
+
+> **Verify:** Get a token with `grant_type=client_credentials&client_id=spark&scope=gravitino` and decode the JWT payload — `aud` must be a plain string, not an array.
+
+**7. Create User**
 
 Go to Users → Create new user:
 
@@ -213,28 +253,26 @@ kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/cont
 
 ## Cấu hình Iceberg catalog trên Gravitino UI (PostgreSQL + MinIO)
 
-### 1. Tạo database backend cho Iceberg REST trong PostgreSQL
+### 1. Tạo Metalake
 
-Kết nối vào PostgreSQL (ví dụ bằng `psql` với user `postgres`) và chạy:
+Trước khi tạo catalog, phải tạo metalake `stock_metalake` — đây là namespace cấp cao nhất trong Gravitino. Iceberg REST service (port 9001) dùng metalake này để đọc dynamic catalog config.
 
-```sql
--- Tạo database dành riêng cho Iceberg REST catalog
-CREATE DATABASE iceberg_catalog_db;
+1. Vào `https://openhouse.gravitino.test/ui`
+2. Click **Create Metalake**
+3. Điền:
+   - **Name**: `stock_metalake`
+   - **Comment**: để trống hoặc tuỳ ý
+4. Click **Create**
 
--- Tạo user riêng cho catalog
-CREATE USER iceberg WITH ENCRYPTED PASSWORD 'iceberg';
+> **Lưu ý:** Metalake `stock_metalake` phải tồn tại trước khi Spark jobs chạy. Nếu không, mọi request từ Spark tới Iceberg REST port 9001 sẽ fail với lỗi `metalake not found`.
 
--- Gán quyền sở hữu DB cho user iceberg
-ALTER DATABASE iceberg_catalog_db OWNER TO iceberg;
-```
+### 2. Tạo Iceberg catalog trên Gravitino UI
 
-Khi đó JDBC URL kết nối là:
+JDBC URL kết nối đến `iceberg_catalog_db` (đã tạo ở bước PostgreSQL):
 
 ```text
 jdbc:postgresql://openhouse-postgresql-primary:5432/iceberg_catalog_db
 ```
-
-### 2. Tạo Iceberg catalog trên Gravitino UI
 
 1. Đăng nhập Gravitino UI.
 2. Vào metalake mong muốn → tab **Catalogs** → **Create Catalog**.

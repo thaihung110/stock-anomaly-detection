@@ -31,9 +31,9 @@ class SyncCustomAlertsPipelineTransformSpec extends AnyFlatSpec with Matchers wi
   private def makeEventsDF() = {
     import spark.implicits._
     Seq(
-      ("uuid-1", "AAPL", fixedTs, "price",         ">",          150.0, 155.5),
-      ("uuid-2", "TSLA", fixedTs, "volume_zscore",  "CROSSES_UP", 3.0,   3.8)
-    ).toDF("event_id", "symbol", "triggered_at",
+      ("uuid-1", "user-A", "AAPL", fixedTs, "price",         ">",          150.0, 155.5),
+      ("uuid-2", "user-B", "TSLA", fixedTs, "volume_zscore", "CROSSES_UP", 3.0,   3.8)
+    ).toDF("event_id", "user_id", "symbol", "triggered_at",
            "field_snapshot", "operator_snapshot", "threshold_snapshot", "triggered_value")
   }
 
@@ -109,13 +109,25 @@ class SyncCustomAlertsPipelineTransformSpec extends AnyFlatSpec with Matchers wi
     values(1) shouldBe 3.8
   }
 
-  it should "produce exactly 9 output columns with correct names" in {
+  it should "produce exactly 10 output columns with correct names" in {
     val result   = SyncCustomAlertsPipeline.transform(makeEventsDF())
     val expected = Set(
       "alert_id", "symbol", "event_ts", "rule_name",
-      "severity", "triggered_value", "threshold", "alert_source", "written_at"
+      "severity", "triggered_value", "threshold", "alert_source", "written_at",
+      "user_id"
     )
     result.columns.toSet shouldBe expected
+  }
+
+  it should "preserve user_id as a string column" in {
+    val result = SyncCustomAlertsPipeline.transform(makeEventsDF())
+    val userIds = result
+      .orderBy("symbol")
+      .select("user_id")
+      .as[String](org.apache.spark.sql.Encoders.STRING)
+      .collect()
+      .toSet
+    userIds shouldBe Set("user-A", "user-B")
   }
 
   it should "not expose raw source columns in output" in {
@@ -129,12 +141,12 @@ class SyncCustomAlertsPipelineTransformSpec extends AnyFlatSpec with Matchers wi
 
   it should "handle an empty input DataFrame without error" in {
     import spark.implicits._
-    val empty = Seq.empty[(String, String, Timestamp, String, String, Double, Double)]
-      .toDF("event_id", "symbol", "triggered_at",
+    val empty = Seq.empty[(String, String, String, Timestamp, String, String, Double, Double)]
+      .toDF("event_id", "user_id", "symbol", "triggered_at",
             "field_snapshot", "operator_snapshot", "threshold_snapshot", "triggered_value")
 
     val result = SyncCustomAlertsPipeline.transform(empty)
     result.count() shouldBe 0
-    result.columns.length shouldBe 9
+    result.columns.length shouldBe 10
   }
 }
