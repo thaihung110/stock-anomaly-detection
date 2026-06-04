@@ -7,7 +7,6 @@ import structlog
 import yfinance as yf
 
 from .config import Settings
-from .metrics import YF_WS_RECONNECTS
 
 log = structlog.get_logger()
 
@@ -62,7 +61,6 @@ async def stream_quotes(settings: Settings) -> AsyncGenerator[dict[str, Any], No
                 await asyncio.gather(listen_task, return_exceptions=True)
                 log.debug("yfinance_ws_listen_task_cancelled")
 
-        YF_WS_RECONNECTS.inc()
         jitter = delay * 0.1 * (2 * random.random() - 1)
         sleep_for = min(delay + jitter, settings.reconnect_max_delay_sec)
         log.info("yfinance_ws_reconnecting", sleep_sec=round(sleep_for, 2))

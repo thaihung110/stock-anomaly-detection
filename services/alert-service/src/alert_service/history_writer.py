@@ -13,7 +13,7 @@ single commit (Bug #6).
 
 ``asyncio.wait_for`` cannot cancel a running thread, so on timeout the commit
 outcome is *unknown* — the background thread may still complete.  Callers
-**must not** DLQ-and-replay on ``asyncio.TimeoutError`` from this module to
+**must not** DLQ-and-replay on ``TimeoutError`` from this module to
 avoid writing duplicate rows into the append-only table (Bug #3).
 """
 from __future__ import annotations
@@ -177,7 +177,7 @@ async def append_alert_history_batch(
             ``user_id`` row (admin-chat fallback).
 
     Raises:
-        asyncio.TimeoutError: Commit exceeded ``_ICEBERG_WRITE_TIMEOUT_SEC``.
+        TimeoutError: Commit exceeded ``_ICEBERG_WRITE_TIMEOUT_SEC``.
             **Do not DLQ on this error** — the background thread may still
             commit the row, and re-delivery would produce a duplicate row in
             the append-only table.
@@ -195,7 +195,7 @@ async def append_alert_history_batch(
             ),
             timeout=_ICEBERG_WRITE_TIMEOUT_SEC,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error(
             "history_write_timeout_unknown_state",
             alert_id=alert.alert_id,

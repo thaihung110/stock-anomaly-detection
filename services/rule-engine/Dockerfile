@@ -1,22 +1,20 @@
 # Build context: services/  (so shared/ is reachable)
 #   docker build -t rule-engine:tag -f services/rule-engine/Dockerfile services/
+#
+# Note: rule-engine no longer depends on shared/telegram_client (ADR-001).
+# All Telegram delivery is handled by alert-service.
 
 FROM python:3.12-slim AS builder
 
 WORKDIR /build
 RUN pip install --no-cache-dir hatchling
 
-# 1) Install shared telegram-client first so it satisfies the dep declared below.
-COPY shared/telegram_client/ shared/telegram_client/
-RUN pip install --no-cache-dir ./shared/telegram_client
-
-# 2) Install service runtime deps (parsed from pyproject; telegram-client is already
-#    satisfied by step 1 and pip will skip it).
+# 1) Install service runtime deps (parsed from pyproject.toml).
 COPY rule-engine/pyproject.toml rule-engine/pyproject.toml
 RUN python3 -c "import tomllib; d=tomllib.load(open('rule-engine/pyproject.toml','rb')); open('/deps.txt','w').write('\n'.join(d['project']['dependencies']))" && \
     pip install --no-cache-dir -r /deps.txt
 
-# 3) Install the service itself (no-deps because step 2 handled them).
+# 2) Install the service itself (no-deps because step 1 handled them).
 COPY rule-engine/src/ rule-engine/src/
 RUN pip install --no-cache-dir --no-deps ./rule-engine
 

@@ -1,5 +1,7 @@
 import uuid
+from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, field_validator
 
@@ -78,6 +80,51 @@ class AlertEvent(BaseModel):
             triggered_value=triggered_value,
             threshold=threshold,
             context_snapshot=context_snapshot,
+        )
+
+
+class CustomAlertEvent(BaseModel):
+    """Contract for alerts.user topic (custom user alert).
+
+    Carries everything alert-service needs to route + format the message
+    without querying the database. Mirror this schema in alert-service schema.py.
+    """
+
+    event_id: str      # UUID generated at fire time (for Kafka message deduplication)
+    rule_id: str
+    user_id: str
+    chat_id: int | str | None   # joined from users; None → admin fallback
+    symbol: str
+    field: str         # AlertField value — alert-service uses to detect batch-daily fields
+    operator: str      # AlertOperator value
+    threshold: float
+    triggered_value: float
+    triggered_at: str  # ISO-8601 UTC
+
+    @field_validator("symbol")
+    @classmethod
+    def uppercase_symbol(cls, v: str) -> str:
+        return v.upper()
+
+    @staticmethod
+    def build(
+        rule: Any,  # UserAlertRule — Any avoids importing models into schema layer
+        event_id: str,
+        symbol: str,
+        triggered_value: float,
+        triggered_at: datetime,
+    ) -> "CustomAlertEvent":
+        return CustomAlertEvent(
+            event_id=event_id,
+            rule_id=str(rule.rule_id),
+            user_id=str(rule.user_id),
+            chat_id=rule.chat_id,
+            symbol=symbol,
+            field=rule.field.value,
+            operator=rule.operator.value,
+            threshold=rule.threshold,
+            triggered_value=triggered_value,
+            triggered_at=triggered_at.isoformat(),
         )
 
 

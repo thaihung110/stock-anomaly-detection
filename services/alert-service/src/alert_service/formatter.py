@@ -1,10 +1,14 @@
-from alert_service.schema import AlertEvent, AlertSeverity, RuleName
+from alert_service.schema import AlertEvent, AlertSeverity, CustomAlertEvent, RuleName
 
 _SEVERITY_EMOJI = {AlertSeverity.HIGH: "🔴", AlertSeverity.MEDIUM: "🟡"}
 
 _BATCH_DATA_NOTE = (
     "\n⚠️ _Note: this indicator reflects end-of-previous-day batch data, not real-time intraday values._"
 )
+
+# Fields sourced from daily batch (not real-time intraday) — must note in alert messages.
+# Values must match AlertField.RSI_14.value / AlertField.BB_POSITION.value in rule-engine.
+_BATCH_DAILY_FIELDS: frozenset[str] = frozenset({"rsi_14", "bb_position"})
 
 
 def format_message(alert: AlertEvent) -> str:
@@ -26,3 +30,19 @@ def format_message(alert: AlertEvent) -> str:
         parts.append(_BATCH_DATA_NOTE)
 
     return "\n".join(parts)
+
+
+def format_custom_message(event: CustomAlertEvent) -> str:
+    """Return a plain-text message string for a custom user alert.
+
+    Uses parse_mode=None (not MarkdownV2) to avoid escaping issues with
+    user-supplied field/operator strings.
+    """
+    batch_note = " ⚠️ (end-of-previous-day)" if event.field in _BATCH_DAILY_FIELDS else ""
+    return (
+        f"⚡ Custom Alert: {event.symbol}\n"
+        f"Field: {event.field}{batch_note}\n"
+        f"Condition: {event.field} {event.operator} {event.threshold}\n"
+        f"Current value: {event.triggered_value:.4f}\n"
+        f"Time: {event.triggered_at}"
+    )

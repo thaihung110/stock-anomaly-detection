@@ -15,7 +15,6 @@ from pydantic import ValidationError
 
 from finnhub_news_producer.config import Settings
 from finnhub_news_producer.finnhub_client import poll_news
-from finnhub_news_producer.metrics import ARTICLES_DROPPED, POLL_DURATION, start_metrics_server
 from finnhub_news_producer.normalizer import normalize
 from finnhub_news_producer.producer import NewsProducer
 
@@ -65,19 +64,15 @@ async def _run(config: Settings, producer: NewsProducer, stop_event: asyncio.Eve
                     )
             except KeyError as exc:
                 articles_dropped += 1
-                ARTICLES_DROPPED.labels(reason="missing_field").inc()
                 logger.warning("article_dropped_missing_field", field=str(exc), symbol=symbol)
             except ValidationError as exc:
                 articles_dropped += 1
-                ARTICLES_DROPPED.labels(reason="validation_error").inc()
                 logger.warning("article_dropped_validation", error=str(exc), symbol=symbol)
             except Exception as exc:  # noqa: BLE001
                 articles_dropped += 1
-                ARTICLES_DROPPED.labels(reason="unexpected").inc()
                 logger.error("article_dropped_unexpected", error=str(exc), symbol=symbol)
 
         cycle_duration = time.monotonic() - cycle_start
-        POLL_DURATION.observe(cycle_duration)
         logger.info(
             "poll_cycle_complete",
             cycle_published=cycle_published,
@@ -99,13 +94,11 @@ async def main() -> None:
     _configure_logging()
     config = Settings()
 
-    start_metrics_server(config.metrics_port)
     logger.info(
         "service_starting",
         topic=config.kafka_topic,
         symbols_count=len(config.symbols_list),
         poll_interval_sec=config.poll_interval_sec,
-        metrics_port=config.metrics_port,
     )
 
     producer = NewsProducer(config)

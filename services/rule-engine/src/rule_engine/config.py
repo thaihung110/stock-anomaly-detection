@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_input_topic: str = "raw.stock.quotes"
     kafka_output_topic: str = "alerts.raw"
+    kafka_user_alert_topic: str = "alerts.user"
 
     # Iceberg REST catalog (Gravitino + Keycloak OAuth2)
     iceberg_catalog_uri: str = "http://gravitino:8090/iceberg"
@@ -44,18 +45,9 @@ class Settings(BaseSettings):
     pg_password: SecretStr = SecretStr("")
     pg_dsn: str = ""
 
-    # Telegram (for custom alert delivery)
-    telegram_bot_token: str = ""
-    telegram_chat_id: int | str | None = None
-    telegram_api_base_url: str = "https://api.telegram.org"
-    telegram_retry_attempts: int = 3
-    telegram_retry_base_delay: float = 1.0
-
-    # Phase 2 — per-user routing kill switch.
-    # When False (default), custom alerts always go to ``telegram_chat_id`` (admin).
-    # When True, they go to ``users.chat_id`` joined via ``get_active_rules``,
-    # falling back to ``telegram_chat_id`` when the column is NULL.
-    enable_per_user_routing: bool = False
+    # System alert cooldown — suppresses re-firing the same (symbol, rule) pair within
+    # this window even if the condition remains true (e.g. RSI stays > 80 all day).
+    system_alert_cooldown_min: int = 60
 
     # Service
     http_port: int = 8080

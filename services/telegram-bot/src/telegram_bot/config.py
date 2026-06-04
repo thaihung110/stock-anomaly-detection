@@ -7,14 +7,17 @@ _DEFAULT_WEBHOOK_PATH = "/webhook"
 class Settings(BaseSettings):
     """Service configuration loaded from environment variables or .env file."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8"
+    )
 
     telegram_bot_token: str
     webhook_host: str  # e.g. "https://bot.example.com"
     webhook_path: str = _DEFAULT_WEBHOOK_PATH
     app_port: int = _DEFAULT_APP_PORT
-    pg_dsn: str                  # postgresql://user:pass@host:5432/dbname
-    rule_engine_url: str         # e.g. "http://rule-engine-svc:8000"
+    pg_dsn: str  # postgresql://user:pass@host:5432/dbname
+    rule_engine_url: str  # e.g. "http://rule-engine-svc:8000"
+    alert_service_url: str = "http://alert-service:8080"
 
     @property
     def webhook_url(self) -> str:

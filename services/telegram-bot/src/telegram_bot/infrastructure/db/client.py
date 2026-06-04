@@ -11,6 +11,7 @@ import structlog
 
 from telegram_bot.domain.enums import AlertField, AlertFrequency, AlertOperator, AlertStatus
 from telegram_bot.domain.models import UserAlertEvent, UserAlertRule
+from telegram_bot.domain.preferences import SystemAlertMode, UserPreferences
 
 logger = structlog.get_logger(__name__)
 
@@ -152,6 +153,100 @@ class DbClient:
                 user_id,
             )
         )
+
+    # ── Phase 4 — chat_id / watchlist / preferences ──────────────────────────
+
+    async def upsert_chat_id(self, telegram_id: int, chat_id: int) -> UUID:
+        """UPSERT users with chat_id + last_seen_at. Returns user_id.
+
+        Trigger ``trg_users_create_prefs`` auto-inserts a default row into
+        ``user_preferences`` on first INSERT, so callers do not need to.
+        """
+        row = await self.pool.fetchrow(
+            """
+            INSERT INTO users (telegram_id, chat_id, last_seen_at, updated_at)
+            VALUES ($1, $2, now(), now())
+            ON CONFLICT (telegram_id) DO UPDATE
+                SET chat_id      = EXCLUDED.chat_id,
+                    last_seen_at = now(),
+                    updated_at   = now()
+            RETURNING user_id
+            """,
+            telegram_id,
+            chat_id,
+        )
+        user_id = UUID(str(row["user_id"]))  # type: ignore[index]
+        logger.info("user_chat_id_upserted", telegram_id=telegram_id, user_id=str(user_id))
+        return user_id
+
+    async def watchlist_add(self, user_id: UUID, symbol: str) -> bool:
+        """Add (user, symbol) to watchlist. Returns True if inserted, False if already present."""
+        result = await self.pool.execute(
+            """
+            INSERT INTO user_watchlist (user_id, symbol)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id, symbol) DO NOTHING
+            """,
+            user_id,
+            symbol.upper(),
+        )
+        return result == "INSERT 0 1"
+
+    async def watchlist_remove(self, user_id: UUID, symbol: str) -> bool:
+        result = await self.pool.execute(
+            "DELETE FROM user_watchlist WHERE user_id = $1 AND symbol = $2",
+            user_id,
+            symbol.upper(),
+        )
+        return result == "DELETE 1"
+
+    async def watchlist_list(self, user_id: UUID) -> list[str]:
+        rows = await self.pool.fetch(
+            "SELECT symbol FROM user_watchlist WHERE user_id = $1 ORDER BY symbol",
+            user_id,
+        )
+        return [r["symbol"] for r in rows]
+
+    async def preferences_get(self, user_id: UUID) -> UserPreferences:
+        row = await self.pool.fetchrow(
+            """
+            SELECT user_id, system_alert_mode, custom_alert_enabled
+            FROM user_preferences
+            WHERE user_id = $1
+            """,
+            user_id,
+        )
+        if row is None:
+            raise LookupError(f"user_preferences missing for user_id={user_id}")
+        return UserPreferences(
+            user_id=UUID(str(row["user_id"])),
+            system_alert_mode=SystemAlertMode(row["system_alert_mode"]),
+            custom_alert_enabled=bool(row["custom_alert_enabled"]),
+        )
+
+    async def preferences_set_mode(self, user_id: UUID, mode: SystemAlertMode) -> None:
+        await self.pool.execute(
+            """
+            UPDATE user_preferences
+            SET system_alert_mode = $1::system_alert_mode, updated_at = now()
+            WHERE user_id = $2
+            """,
+            mode.value,
+            user_id,
+        )
+        logger.info("preferences_mode_updated", user_id=str(user_id), mode=mode.value)
+
+    async def preferences_set_custom_enabled(self, user_id: UUID, enabled: bool) -> None:
+        await self.pool.execute(
+            """
+            UPDATE user_preferences
+            SET custom_alert_enabled = $1, updated_at = now()
+            WHERE user_id = $2
+            """,
+            enabled,
+            user_id,
+        )
+        logger.info("preferences_custom_enabled_updated", user_id=str(user_id), enabled=enabled)
 
 
 # ── Row mappers ───────────────────────────────────────────────────────────────

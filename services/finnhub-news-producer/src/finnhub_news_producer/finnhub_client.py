@@ -15,7 +15,6 @@ import httpx
 import structlog
 
 from finnhub_news_producer.config import Settings
-from finnhub_news_producer.metrics import API_ERRORS
 
 logger = structlog.get_logger(__name__)
 
@@ -46,14 +45,12 @@ async def _fetch_symbol_news(
                 await asyncio.sleep(5.0)
                 continue
             logger.error("news_api_unexpected_status", symbol=symbol, status=resp.status_code)
-            API_ERRORS.labels(symbol=symbol).inc()
             return []
         except httpx.RequestError as exc:
             logger.warning("news_api_request_error", symbol=symbol, error=str(exc), attempt=attempt + 1)
             if attempt == 0:
                 await asyncio.sleep(5.0)
 
-    API_ERRORS.labels(symbol=symbol).inc()
     return []
 
 

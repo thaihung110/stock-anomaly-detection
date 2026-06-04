@@ -19,6 +19,7 @@ logger = structlog.get_logger(__name__)
 cfg = Settings()
 router = KafkaRouter(cfg.kafka_bootstrap_servers)
 publisher = router.publisher(cfg.kafka_output_topic)
+user_alert_publisher = router.publisher(cfg.kafka_user_alert_topic)
 
 _context_cache: dict[str, dict[str, float]] = {}
 _reload_lock = asyncio.Lock()
@@ -39,7 +40,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
     repository = UserAlertRepository(_db_client)
     _orchestrator = RuleOrchestrator(cfg)
-    _alert_processor = UserAlertProcessor(repository, cfg)
+    _alert_processor = UserAlertProcessor(repository)
     rule_count = await _alert_processor.reload_rules()
 
     logger.info(
@@ -68,7 +69,7 @@ async def handle_quote(event: QuoteEvent) -> None:
         await _orchestrator.evaluate(event, ctx, publisher)
 
     if _alert_processor is not None:
-        await _alert_processor.evaluate(event, ctx)
+        await _alert_processor.evaluate(event, ctx, user_alert_publisher)
         await _alert_processor.update_prev_values(event, ctx)
 
 

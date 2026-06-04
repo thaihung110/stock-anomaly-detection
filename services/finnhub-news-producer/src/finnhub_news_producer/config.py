@@ -28,8 +28,6 @@ class Settings(BaseSettings):
     # Max size of in-memory dedup set before it is cleared
     dedup_max_size: int = 10_000
 
-    metrics_port: int = 8000
-
     @property
     def symbols_list(self) -> list[str]:
         return [s.strip() for s in self.symbols.split(",") if s.strip()]

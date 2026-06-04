@@ -14,7 +14,6 @@ from pydantic import ValidationError
 
 from finnhub_trades_producer.config import Settings
 from finnhub_trades_producer.finnhub_client import stream_trades
-from finnhub_trades_producer.metrics import TICKS_DROPPED, start_metrics_server
 from finnhub_trades_producer.normalizer import normalize
 from finnhub_trades_producer.producer import TradesProducer
 
@@ -57,15 +56,12 @@ async def _run(config: Settings, producer: TradesProducer) -> None:
                     )
             except ValidationError as exc:
                 ticks_dropped += 1
-                TICKS_DROPPED.labels(reason="validation_error").inc()
                 logger.warning("tick_dropped_validation", error=str(exc), raw=raw_tick)
             except KeyError as exc:
                 ticks_dropped += 1
-                TICKS_DROPPED.labels(reason="missing_field").inc()
                 logger.warning("tick_dropped_missing_field", field=str(exc), raw=raw_tick)
             except Exception as exc:  # noqa: BLE001
                 ticks_dropped += 1
-                TICKS_DROPPED.labels(reason="unexpected").inc()
                 logger.error("tick_dropped_unexpected", error=str(exc), raw=raw_tick)
 
 
@@ -73,12 +69,10 @@ async def main() -> None:
     _configure_logging()
     config = Settings()
 
-    start_metrics_server(config.metrics_port)
     logger.info(
         "service_starting",
         topic=config.kafka_topic,
         symbols_count=len(config.symbols_list),
-        metrics_port=config.metrics_port,
     )
 
     producer = TradesProducer(config)

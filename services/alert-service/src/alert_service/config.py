@@ -7,8 +7,11 @@ class Settings(BaseSettings):
 
     # Kafka
     kafka_bootstrap_servers: str = "localhost:9092"
-    kafka_input_topic: str = "alerts.confirmed"
+    # ADR-002: bypass LLM agent (not yet deployed) — consume from alerts.raw directly
+    kafka_input_topic: str = "alerts.raw"
     kafka_consumer_group: str = "alert-service"
+    kafka_user_alert_topic: str = "alerts.user"
+    kafka_user_consumer_group: str = "alert-service-user"
 
     # PostgreSQL — passed individually to asyncpg.create_pool() so the
     # password stays inside SecretStr and never leaks into a plain string field
@@ -24,6 +27,10 @@ class Settings(BaseSettings):
     # behavior). When True, fan out to all matching subscribers based on
     # user_preferences.system_alert_mode and user_watchlist membership.
     enable_fanout: bool = False
+    # When False (default), custom alerts go to the admin chat.
+    # When True, route each custom alert to the user's own chat_id; fall back
+    # to admin if chat_id is None (user has not run /start yet).
+    enable_per_user_routing: bool = False
     subscriber_cache_ttl_sec: float = 60.0
 
     # Telegram

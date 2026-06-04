@@ -1,10 +1,7 @@
-import time
-
 import structlog
 from aiokafka import AIOKafkaProducer
 
 from .config import Settings
-from .metrics import KAFKA_PUBLISH_LATENCY, QUOTES_PUBLISHED
 from .schema import QuoteEvent
 
 log = structlog.get_logger()
@@ -32,11 +29,8 @@ class QuotesProducer:
 
     async def publish(self, event: QuoteEvent) -> None:
         assert self._producer is not None, "producer not started"
-        start = time.monotonic()
         await self._producer.send(
             self._settings.kafka_topic,
             key=event.symbol.encode("utf-8"),
             value=event.to_kafka_bytes(),
         )
-        KAFKA_PUBLISH_LATENCY.observe(time.monotonic() - start)
-        QUOTES_PUBLISHED.labels(symbol=event.symbol).inc()
