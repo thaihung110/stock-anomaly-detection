@@ -5,13 +5,10 @@ Publishes TradeTick messages to raw.stock.trades.
 Key = symbol bytes → guarantees same partition for OHLCV window ordering.
 """
 
-import time
-
 import structlog
 from aiokafka import AIOKafkaProducer
 
 from finnhub_trades_producer.config import Settings
-from finnhub_trades_producer.metrics import KAFKA_PUBLISH_LATENCY, TICKS_PUBLISHED
 from finnhub_trades_producer.schema import TradeTick
 
 logger = structlog.get_logger(__name__)
@@ -44,13 +41,8 @@ class TradesProducer:
     async def publish(self, tick: TradeTick) -> None:
         assert self._producer is not None, "call start() before publish()"
 
-        t0 = time.monotonic()
         await self._producer.send(
             self._config.kafka_topic,
             key=tick.kafka_key(),
             value=tick.to_kafka_bytes(),
         )
-        latency = time.monotonic() - t0
-
-        TICKS_PUBLISHED.labels(symbol=tick.symbol).inc()
-        KAFKA_PUBLISH_LATENCY.observe(latency)

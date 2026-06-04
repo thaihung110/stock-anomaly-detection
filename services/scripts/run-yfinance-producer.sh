@@ -5,7 +5,7 @@ NAMESPACE="stock-anomaly-detection"
 DEPLOYMENT_NAME="yfinance-quotes-producer"
 
 echo "Deploying $DEPLOYMENT_NAME..."
-kubectl apply -f "$(dirname "$0")/../yfinance-quotes-producer/k8s/deployment.yaml"
+kubectl apply -f "$(dirname "$0")/../k8s/yfinance-quotes-producer/deployment.yaml"
 
 echo "Checking deployment status..."
 if kubectl wait --for=condition=available=1 deployment/$DEPLOYMENT_NAME \

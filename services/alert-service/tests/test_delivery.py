@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from telegram_client import (
+from alert_service.telegram_client import (
     TelegramError,
     TelegramPermanentError,
     TelegramRateLimitError,
@@ -71,25 +71,15 @@ async def test_fans_out_to_every_subscriber() -> None:
 
 
 @pytest.mark.asyncio
-async def test_no_subscribers_falls_back_to_admin_chat() -> None:
+async def test_no_subscribers_drops_alert() -> None:
+    """All users opted out (mode=OFF / not in watchlist) → alert silently dropped.
+
+    Admin-chat fallback was intentionally removed: in fan-out mode the admin
+    must register with system_alert_mode=ALL to receive alerts.
+    """
     telegram = AsyncMock()
     cache = _cache([])
     cfg = _cfg(admin_chat="ADMIN_CHAT")
-
-    delivery = AlertDeliveryService(telegram, cache, cfg)
-    with patch("alert_service.delivery.append_alert_history_batch", new=AsyncMock()) as mock_hist:
-        await delivery.fan_out(_event())
-
-    telegram.send_message.assert_awaited_once()
-    assert telegram.send_message.await_args.args[0] == "ADMIN_CHAT"
-    assert mock_hist.await_args.kwargs["user_ids"] == [None]
-
-
-@pytest.mark.asyncio
-async def test_no_subscribers_and_no_admin_drops_alert() -> None:
-    telegram = AsyncMock()
-    cache = _cache([])
-    cfg = _cfg(admin_chat="")
 
     delivery = AlertDeliveryService(telegram, cache, cfg)
     with patch("alert_service.delivery.append_alert_history_batch", new=AsyncMock()) as mock_hist:
@@ -148,7 +138,7 @@ async def test_history_timeout_aborts_fan_out_without_dlq() -> None:
     cfg = _cfg()
     dlq = AsyncMock()
 
-    history_mock = AsyncMock(side_effect=asyncio.TimeoutError())
+    history_mock = AsyncMock(side_effect=TimeoutError())
     delivery = AlertDeliveryService(telegram, cache, cfg, dlq=dlq)
     with patch("alert_service.delivery.append_alert_history_batch", new=history_mock):
         await delivery.fan_out(_event())
@@ -209,11 +199,13 @@ async def test_telegram_failure_classified_and_sent_to_dlq(
 
 
 @pytest.mark.asyncio
-async def test_admin_chat_fallback_uses_admin_chat_as_recipient_in_dlq() -> None:
+async def test_telegram_failure_for_subscriber_routes_to_dlq() -> None:
+    """Permanent Telegram error for a real subscriber is DLQ'd with subscriber chat_id."""
     telegram = AsyncMock()
     telegram.send_message.side_effect = TelegramPermanentError("nope")
-    cache = _cache([])
-    cfg = _cfg(admin_chat="ADMIN_CHAT")
+    sub = Subscriber(user_id=uuid4(), chat_id=9999)
+    cache = _cache([sub])
+    cfg = _cfg()
     dlq = AsyncMock()
 
     delivery = AlertDeliveryService(telegram, cache, cfg, dlq=dlq)
@@ -222,7 +214,7 @@ async def test_admin_chat_fallback_uses_admin_chat_as_recipient_in_dlq() -> None
 
     dlq.publish_failure.assert_awaited_once()
     kwargs = dlq.publish_failure.await_args.kwargs
-    assert kwargs["recipient"] == "ADMIN_CHAT"
+    assert kwargs["recipient"] == sub
     assert kwargs["reason"] is DLQReason.PERMANENT
 
 

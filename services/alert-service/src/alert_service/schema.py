@@ -35,6 +35,26 @@ class AlertEvent(BaseModel):
         return v.upper()
 
 
+class CustomAlertEvent(BaseModel):
+    """Mirror of rule-engine CustomAlertEvent — contract for alerts.user topic."""
+
+    event_id: str
+    rule_id: str
+    user_id: str
+    chat_id: int | str | None
+    symbol: str
+    field: str         # AlertField value — used to detect batch-daily fields
+    operator: str      # AlertOperator value
+    threshold: float
+    triggered_value: float
+    triggered_at: str  # ISO-8601 UTC
+
+    @field_validator("symbol")
+    @classmethod
+    def uppercase_symbol(cls, v: str) -> str:
+        return v.upper()
+
+
 class DLQReason(str, Enum):
     """Why an alert was diverted to ``alerts.failed``."""
 

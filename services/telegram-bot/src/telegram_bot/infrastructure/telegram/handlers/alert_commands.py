@@ -4,6 +4,10 @@ All handlers are pure async functions injected with dependencies via closures
 (_make_*_handler pattern). This keeps handlers testable — no global state.
 
 Commands: /setalert /listalerts /pausealert /resumealert /resetalert /delalert /alerthistory
+
+Rule selection UX: /listalerts stores a {index: rule_id} map in context.user_data["rule_index"].
+All mutating commands accept either a 1-based index (e.g. "1") or a full UUID. This lets
+users type "/pausealert 1" on mobile instead of copy-pasting a 36-char UUID.
 """
 from collections.abc import Callable, Coroutine
 from typing import Any
@@ -37,6 +41,22 @@ _STATUS_EMOJI = {
     AlertStatus.PAUSED: "⏸ PAUSED",
     AlertStatus.TRIGGERED: "✅ TRIGGERED",
 }
+_RULE_INDEX_KEY = "rule_index"
+
+
+def _resolve_rule_id(arg: str, context: ContextTypes.DEFAULT_TYPE) -> UUID | None:
+    """Resolve a user-supplied argument to a UUID.
+
+    Accepts either a 1-based index from the last /listalerts (e.g. "1") or a
+    full UUID string. Returns None if neither form is valid.
+    """
+    rule_index: dict[int, UUID] = (context.user_data or {}).get(_RULE_INDEX_KEY, {})
+    if arg.isdigit():
+        return rule_index.get(int(arg))
+    try:
+        return UUID(arg)
+    except ValueError:
+        return None
 
 
 # ── /setalert ─────────────────────────────────────────────────────────────────
@@ -161,9 +181,14 @@ def _make_listalerts_handler(svc: AlertService) -> _HandlerFunc:
         if triggered_count:
             header_parts.append(f"{triggered_count} triggered")
 
-        lines: list[str] = [f"Your Alerts ({', '.join(header_parts)}):\n"]
-        for rule in rules:
-            rule_id_short = str(rule.rule_id)[:8]
+        # Build index map so user can reference rules by number in subsequent commands
+        rule_index: dict[int, UUID] = {}
+        lines: list[str] = [
+            f"Your Alerts ({', '.join(header_parts)}):\n",
+            "Use the number with /pausealert, /resumealert, /resetalert, /delalert\n",
+        ]
+        for i, rule in enumerate(rules, start=1):
+            rule_index[i] = rule.rule_id  # type: ignore[assignment]
             status_label = _STATUS_EMOJI.get(rule.status, rule.status.value)
             sym_label = ", ".join(rule.symbols)
             freq_label = _FREQ_DISPLAY.get(rule.frequency, rule.frequency.value)
@@ -172,10 +197,13 @@ def _make_listalerts_handler(svc: AlertService) -> _HandlerFunc:
                 " (use /resetalert to reuse)" if rule.status == AlertStatus.TRIGGERED else ""
             )
             lines.append(
-                f"[{status_label}] {rule_id_short} — "
+                f"{i}. [{status_label}] "
                 f"{sym_label} {rule.field.value} {rule.operator.value} {rule.threshold}"
                 f" ({freq_label}){batch_note}{triggered_hint}"
             )
+
+        if context.user_data is not None:
+            context.user_data[_RULE_INDEX_KEY] = rule_index
 
         await msg.reply_text("\n".join(lines))
 
@@ -203,13 +231,14 @@ def _make_status_handler(svc: AlertService, action: str) -> _HandlerFunc:
         args = context.args or []
 
         if not args:
-            await msg.reply_text(f"Usage: /{action}alert <rule_id>")
+            await msg.reply_text(f"Usage: /{action}alert <number> — run /listalerts first")
             return
 
-        try:
-            rule_id = UUID(args[0])
-        except ValueError:
-            await msg.reply_text(f"Invalid rule ID: {args[0]!r}")
+        rule_id = _resolve_rule_id(args[0], context)
+        if rule_id is None:
+            await msg.reply_text(
+                f"Rule {args[0]!r} not found.\nRun /listalerts first, then use the number (e.g. /{action}alert 1)."
+            )
             return
 
         try:
@@ -220,10 +249,10 @@ def _make_status_handler(svc: AlertService, action: str) -> _HandlerFunc:
             return
 
         if ok:
-            await msg.reply_text(f"Rule {args[0][:8]} {past_tense}.")
+            await msg.reply_text(f"Rule {args[0]} {past_tense}.")
         else:
             await msg.reply_text(
-                f"Rule {args[0][:8]!r} not found or does not belong to you."
+                f"Rule {args[0]!r} not found or does not belong to you."
             )
 
     return handle
@@ -240,13 +269,14 @@ def _make_delalert_handler(svc: AlertService) -> _HandlerFunc:
         args = context.args or []
 
         if not args:
-            await msg.reply_text("Usage: /delalert <rule_id>")
+            await msg.reply_text("Usage: /delalert <number> — run /listalerts first")
             return
 
-        try:
-            rule_id = UUID(args[0])
-        except ValueError:
-            await msg.reply_text(f"Invalid rule ID: {args[0]!r}")
+        rule_id = _resolve_rule_id(args[0], context)
+        if rule_id is None:
+            await msg.reply_text(
+                f"Rule {args[0]!r} not found.\nRun /listalerts first, then use the number (e.g. /delalert 1)."
+            )
             return
 
         try:
@@ -257,10 +287,10 @@ def _make_delalert_handler(svc: AlertService) -> _HandlerFunc:
             return
 
         if deleted:
-            await msg.reply_text(f"Rule {args[0][:8]} deleted.")
+            await msg.reply_text(f"Rule {args[0]} deleted.")
         else:
             await msg.reply_text(
-                f"Rule {args[0][:8]!r} not found or does not belong to you."
+                f"Rule {args[0]!r} not found or does not belong to you."
             )
 
     return handle

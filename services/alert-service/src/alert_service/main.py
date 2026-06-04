@@ -27,7 +27,7 @@ from alert_service.dlq_producer import DLQPublisher
 from alert_service.formatter import format_message
 from alert_service.history_writer import append_alert_history, close_iceberg, init_iceberg
 from alert_service.rate_limiter import PerChatRateLimiter
-from alert_service.schema import AlertEvent, DLQReason
+from alert_service.schema import AlertEvent, CustomAlertEvent, DLQReason
 from alert_service.subscriber_cache import SubscriberCache
 from alert_service.subscriber_repository import SubscriberRepository
 from alert_service.telegram_client import (
@@ -132,7 +132,7 @@ async def handle_alert(event: AlertEvent) -> None:
     # Write history FIRST — audit trail before any delivery attempt.
     try:
         await append_alert_history(event, cfg)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         # Unknown commit state — must not DLQ to avoid duplicate rows on replay.
         logger.error(
             "alert_history_timeout_unknown_state",
@@ -179,6 +179,18 @@ async def handle_alert(event: AlertEvent) -> None:
                 error=str(exc),
                 attempt_count=cfg.telegram_retry_attempts,
             )
+
+
+@router.subscriber(cfg.kafka_user_alert_topic, group_id=cfg.kafka_user_consumer_group)
+async def handle_custom_alert(event: CustomAlertEvent) -> None:
+    if _delivery is None:
+        logger.error(
+            "custom_alert_dropped_delivery_not_initialized",
+            event_id=event.event_id,
+            symbol=event.symbol,
+        )
+        return
+    await _delivery.deliver_custom(event)
 
 
 @app.post("/internal/reload-subscribers")

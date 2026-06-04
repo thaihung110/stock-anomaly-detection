@@ -23,8 +23,6 @@ class Settings(BaseSettings):
 
     kafka_compression_type: str = "gzip"
 
-    metrics_port: int = 8000
-
     @property
     def symbols_list(self) -> list[str]:
         return [s.strip() for s in self.symbols.split(",") if s.strip()]

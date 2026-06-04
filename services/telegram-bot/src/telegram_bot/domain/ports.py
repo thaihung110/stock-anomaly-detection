@@ -8,12 +8,15 @@ from uuid import UUID
 
 from telegram_bot.domain.enums import AlertStatus
 from telegram_bot.domain.models import UserAlertEvent, UserAlertRule
+from telegram_bot.domain.preferences import SystemAlertMode, UserPreferences
 
 
 class IAlertRepository(Protocol):
     """Port: persistence operations for user alert rules and events."""
 
     async def get_or_create_user(self, telegram_id: int) -> UUID: ...
+
+    async def upsert_chat_id(self, telegram_id: int, chat_id: int) -> UUID: ...
 
     async def insert_rule(self, rule: UserAlertRule) -> UUID: ...
 
@@ -34,3 +37,29 @@ class IRuleEngineClient(Protocol):
     """Port: hot-reload of user rules in the Rule Engine service."""
 
     async def reload_user_rules(self) -> bool: ...
+
+
+class IAlertServiceClient(Protocol):
+    """Port: subscriber-cache invalidation in the Alert Service."""
+
+    async def reload_subscribers(self) -> bool: ...
+
+
+class IWatchlistRepository(Protocol):
+    """Port: per-user symbol watchlist persistence."""
+
+    async def add(self, user_id: UUID, symbol: str) -> bool: ...
+
+    async def remove(self, user_id: UUID, symbol: str) -> bool: ...
+
+    async def list(self, user_id: UUID) -> list[str]: ...
+
+
+class IPreferenceRepository(Protocol):
+    """Port: per-user notification preferences."""
+
+    async def get(self, user_id: UUID) -> UserPreferences: ...
+
+    async def set_mode(self, user_id: UUID, mode: SystemAlertMode) -> None: ...
+
+    async def set_custom_enabled(self, user_id: UUID, enabled: bool) -> None: ...

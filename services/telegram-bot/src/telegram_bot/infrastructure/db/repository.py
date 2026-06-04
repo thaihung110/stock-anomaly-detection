@@ -21,6 +21,9 @@ class UserAlertRepository:
     async def get_or_create_user(self, telegram_id: int) -> UUID:
         return await self._client.get_or_create_user(telegram_id)
 
+    async def upsert_chat_id(self, telegram_id: int, chat_id: int) -> UUID:
+        return await self._client.upsert_chat_id(telegram_id, chat_id)
+
     async def insert_rule(self, rule: UserAlertRule) -> UUID:
         return await self._client.insert_rule(rule)
 

@@ -5,7 +5,7 @@ NAMESPACE="stock-anomaly-detection"
 DEPLOYMENT_NAME="finnhub-news-producer"
 
 echo "Deploying $DEPLOYMENT_NAME..."
-kubectl apply -f "$(dirname "$0")/../finnhub-news-producer/k8s/deployment.yaml"
+kubectl apply -f "$(dirname "$0")/../k8s/finnhub-news-producer/deployment.yaml"
 
 echo "Checking deployment status..."
 if kubectl wait --for=condition=available=1 deployment/$DEPLOYMENT_NAME \

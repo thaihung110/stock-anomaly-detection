@@ -4,7 +4,6 @@ import signal
 import structlog
 
 from .config import Settings
-from .metrics import QUOTES_DROPPED, start_metrics_server
 from .normalizer import normalize
 from .producer import QuotesProducer
 from .yf_client import stream_quotes
@@ -48,7 +47,6 @@ async def run(settings: Settings) -> None:
                     )
             except KeyError as exc:
                 quotes_dropped += 1
-                QUOTES_DROPPED.labels(reason="missing_field").inc()
                 log.warning(
                     "quote_dropped_missing_field",
                     missing_field=str(exc),
@@ -57,7 +55,6 @@ async def run(settings: Settings) -> None:
                 )
             except Exception as exc:
                 quotes_dropped += 1
-                QUOTES_DROPPED.labels(reason="validation_error").inc()
                 log.warning(
                     "quote_dropped_error",
                     error=str(exc),
@@ -78,12 +75,10 @@ def main() -> None:
     )
 
     settings = Settings()
-    start_metrics_server(settings.metrics_port)
     log.info(
         "yfinance_quotes_producer_starting",
         kafka_topic=settings.kafka_topic,
         symbols_count=len(settings.symbols_list),
-        metrics_port=settings.metrics_port,
     )
 
     asyncio.run(run(settings))

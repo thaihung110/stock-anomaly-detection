@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 
 import structlog
-from telegram_client import (
+from alert_service.telegram_client import (
     SharedTelegramClient,
     TelegramError,
     TelegramPermanentError,
@@ -31,10 +31,10 @@ from telegram_client import (
 
 from alert_service.config import Settings
 from alert_service.dlq_producer import DLQPublisher
-from alert_service.formatter import format_message
+from alert_service.formatter import format_custom_message, format_message
 from alert_service.history_writer import append_alert_history_batch
 from alert_service.rate_limiter import PerChatRateLimiter
-from alert_service.schema import AlertEvent, DLQReason
+from alert_service.schema import AlertEvent, CustomAlertEvent, DLQReason
 from alert_service.subscriber_cache import SubscriberCache
 from alert_service.subscriber_repository import Subscriber
 
@@ -42,7 +42,7 @@ logger = structlog.get_logger(__name__)
 
 
 class AlertDeliveryService:
-    """Coordinates: subscriber lookup → history write → rate-limit → Telegram send → DLQ on failure."""
+    """Coordinates subscriber lookup, history write, rate-limiting, Telegram delivery, and DLQ."""
 
     def __init__(
         self,
@@ -88,14 +88,12 @@ class AlertDeliveryService:
             return
 
         # Build user_id list for the batch history write.
-        user_ids: list[str | None] = [
-            str(sub.user_id) if sub is not None else None for sub in recipients
-        ]
+        user_ids: list[str] = [str(sub.user_id) for sub in recipients]
 
         # Write history FIRST — audit trail before any delivery attempt.
         try:
             await append_alert_history_batch(event, self._cfg, user_ids=user_ids)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Unknown commit state — must not DLQ to avoid duplicate rows on replay.
             logger.error(
                 "fanout_history_timeout_unknown_state",
@@ -135,29 +133,87 @@ class AlertDeliveryService:
                     exc_info=result,
                 )
 
-    def _resolve_recipients(self, subscribers: list[Subscriber]) -> list[Subscriber | None]:
-        """Return real subscribers, or ``[None]`` to mean the admin-chat fallback.
+    async def deliver_custom(self, event: CustomAlertEvent) -> None:
+        """Deliver a custom user alert via Telegram.
 
-        ``None`` is a sentinel telling ``_deliver_one`` to use
-        ``cfg.telegram_chat_id`` with a NULL ``user_id`` in history.
+        Routing: when enable_per_user_routing is True, send to event.chat_id;
+        fall back to admin chat if chat_id is None. When routing is disabled,
+        always use admin chat.
+
+        Does NOT write fact_alert_history — custom alert rows are written by
+        the Spark sync_custom_alerts job (07:30 UTC) reading user_alert_events.
+        Writing here would cause double-rows. (ADR, quyết định #3)
         """
-        if subscribers:
-            return list(subscribers)
-        if self._cfg.telegram_chat_id:
-            return [None]
-        return []
+        chat_id = self._resolve_custom_chat(event)
+        if not chat_id:
+            logger.warning(
+                "custom_alert_dropped_no_chat",
+                event_id=event.event_id,
+                symbol=event.symbol,
+                rule_id=event.rule_id,
+            )
+            return
+
+        if self._rate_limiter is not None:
+            await self._rate_limiter.acquire(chat_id)
+
+        text = format_custom_message(event)
+        try:
+            await self._telegram.send_message(chat_id, text, parse_mode=None)
+        except TelegramError as exc:
+            reason = _classify_failure(exc)
+            logger.error(
+                "custom_alert_delivery_failed",
+                event_id=event.event_id,
+                symbol=event.symbol,
+                rule_id=event.rule_id,
+                chat_id=str(chat_id),
+                reason=reason.value,
+                error=str(exc),
+            )
+
+    def _resolve_custom_chat(self, event: CustomAlertEvent) -> int | str | None:
+        """Return the destination chat_id for a custom alert.
+
+        Returns None when no delivery target is configured — caller treats this
+        as a hard skip. Logs a warning when falling back from a missing per-user
+        chat_id to the admin chat.
+        """
+        admin: int | str | None = self._cfg.telegram_chat_id
+
+        if not self._cfg.enable_per_user_routing:
+            return admin
+
+        if event.chat_id is not None:
+            return event.chat_id
+
+        if admin:
+            logger.warning(
+                "custom_alert_chat_fallback",
+                event_id=event.event_id,
+                rule_id=event.rule_id,
+                reason="missing_chat_id",
+            )
+        return admin
+
+    def _resolve_recipients(self, subscribers: list[Subscriber]) -> list[Subscriber]:
+        """Return subscribers who opted in to receive this alert.
+
+        Empty list means all users have opted out (mode=OFF or not in watchlist)
+        — the caller logs ``fanout_no_recipients`` and silently drops the alert.
+        Admin-chat fallback is intentionally absent: in fan-out mode the admin
+        must register with system_alert_mode=ALL to receive alerts.
+        """
+        return list(subscribers)
 
     async def _deliver_one(
         self,
         event: AlertEvent,
         text: str,
-        subscriber: Subscriber | None,
+        subscriber: Subscriber,
     ) -> None:
         """Send one Telegram message.  History has already been written."""
-        if subscriber is None:
-            chat_id: int | str = self._cfg.telegram_chat_id
-        else:
-            chat_id = subscriber.chat_id
+        chat_id: int | str = subscriber.chat_id
 
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire(chat_id)

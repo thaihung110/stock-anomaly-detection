@@ -17,7 +17,6 @@ import websockets
 from websockets.exceptions import ConnectionClosed, WebSocketException
 
 from finnhub_trades_producer.config import Settings
-from finnhub_trades_producer.metrics import WS_RECONNECTS
 
 logger = structlog.get_logger(__name__)
 
@@ -76,7 +75,6 @@ async def stream_trades(config: Settings) -> AsyncIterator[list[dict]]:
                         logger.debug("ws_unknown_message_type", msg_type=msg_type)
 
         except (ConnectionClosed, WebSocketException, OSError, asyncio.TimeoutError) as exc:
-            WS_RECONNECTS.inc()
             jitter = delay * random.uniform(-0.1, 0.1)  # noqa: S311
             wait = delay + jitter
             logger.warning("ws_disconnected", error=str(exc), retry_in_sec=round(wait, 1))

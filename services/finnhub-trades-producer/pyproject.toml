@@ -11,7 +11,6 @@ dependencies = [
     "aiokafka>=0.11",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
-    "prometheus-client>=0.20",
     "structlog>=24.0",
 ]
 

@@ -1,22 +1,27 @@
 """Custom user alert evaluation — manages rule cache, cooldowns, and prev-value tracking."""
 import asyncio
 from datetime import UTC, datetime
-from uuid import UUID
+from typing import Any, Protocol
+from uuid import UUID, uuid4
 
 import asyncpg
 import structlog
 
-from rule_engine.config import Settings
 from rule_engine.domain.custom_rules import evaluate_condition, get_field_value
 from rule_engine.domain.enums import AlertField, AlertFrequency
 from rule_engine.domain.models import UserAlertEvent, UserAlertRule
-from rule_engine.domain.schema import QuoteEvent
+from rule_engine.domain.schema import CustomAlertEvent, QuoteEvent
 from rule_engine.infrastructure.db.repository import UserAlertRepository
-from rule_engine.infrastructure.telegram import send_telegram_custom_alert
 
 logger = structlog.get_logger(__name__)
 
 _SECONDS_PER_MINUTE = 60
+
+
+class EventPublisher(Protocol):
+    """Duck-typed publisher injected into evaluate() — mirrors RuleOrchestrator pattern."""
+
+    async def publish(self, message: Any) -> Any: ...
 
 
 class UserAlertProcessor:
@@ -30,9 +35,8 @@ class UserAlertProcessor:
     All shared state is protected by asyncio locks.
     """
 
-    def __init__(self, repository: UserAlertRepository, cfg: Settings) -> None:
+    def __init__(self, repository: UserAlertRepository) -> None:
         self._repository = repository
-        self._cfg = cfg
 
         self._rules_cache: list[UserAlertRule] = []
         self._rules_lock = asyncio.Lock()
@@ -43,10 +47,6 @@ class UserAlertProcessor:
         self._prev_values: dict[tuple[str, AlertField], float] = {}
         self._prev_values_lock = asyncio.Lock()
 
-        # Keeps strong references to fire-and-forget Telegram tasks so the GC
-        # doesn't destroy them before they complete.
-        self._background_tasks: set[asyncio.Task[None]] = set()
-
     async def reload_rules(self) -> int:
         """Reload active rules from the database. Returns count of loaded rules."""
         rules = await self._repository.get_active_rules()
@@ -54,7 +54,9 @@ class UserAlertProcessor:
             self._rules_cache = rules
         return len(rules)
 
-    async def evaluate(self, event: QuoteEvent, ctx: dict[str, float] | None) -> None:
+    async def evaluate(
+        self, event: QuoteEvent, ctx: dict[str, float] | None, publisher: EventPublisher
+    ) -> None:
         """Evaluate all active custom rules against the given quote event."""
         now = datetime.now(UTC)
 
@@ -65,7 +67,7 @@ class UserAlertProcessor:
             prev_snapshot = dict(self._prev_values)
 
         for rule in rules_snapshot:
-            await self._evaluate_one(event, ctx, rule, now, prev_snapshot)
+            await self._evaluate_one(event, ctx, rule, now, prev_snapshot, publisher)
 
     async def update_prev_values(
         self, event: QuoteEvent, ctx: dict[str, float] | None
@@ -91,6 +93,7 @@ class UserAlertProcessor:
         rule: UserAlertRule,
         now: datetime,
         prev_snapshot: dict[tuple[str, AlertField], float],
+        publisher: EventPublisher,
     ) -> None:
         if rule.symbols != ["*"] and event.symbol not in rule.symbols:
             return
@@ -147,14 +150,26 @@ class UserAlertProcessor:
             value=current,
         )
 
-        # Deliver via Telegram off the hot path — the event log is already written.
-        # send_telegram_custom_alert handles all its own exceptions internally.
-        task = asyncio.create_task(
-            send_telegram_custom_alert(rule, event.symbol, current, now, self._cfg),
-            name=f"telegram_alert_{rule.rule_id}_{event.symbol}",
+        # Publish to alerts.user — alert-service is the single Telegram sender (ADR-001).
+        # Event log (user_alert_events) is already durable before this publish.
+        # Wrap publish: a transient Kafka failure must not propagate to the consumer
+        # handler (which would cause message redelivery and potential double-fire).
+        kafka_event = CustomAlertEvent.build(
+            rule=rule,
+            event_id=str(uuid4()),
+            symbol=event.symbol,
+            triggered_value=current,
+            triggered_at=now,
         )
-        self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
+        try:
+            await publisher.publish(kafka_event)
+        except Exception as exc:  # noqa: BLE001 — publish failure must never abort the consumer
+            logger.error(
+                "custom_alert_publish_failed",
+                rule_id=str(rule.rule_id),
+                symbol=event.symbol,
+                error=str(exc),
+            )
 
         if rule.frequency == AlertFrequency.ONCE:
             await self._mark_triggered(rule.rule_id)

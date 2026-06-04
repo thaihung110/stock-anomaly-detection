@@ -94,9 +94,18 @@ class TestRuleOrchestrator:
     async def test_evaluate_counts_multiple_alerts(
         self, cfg: Settings, ctx: dict[str, float]
     ) -> None:
-        alert = _make_alert()
-        rule_a = MagicMock(return_value=alert)
-        rule_b = MagicMock(return_value=alert)
+        # Two rules with different rule_names so they don't share a cooldown key.
+        alert_a = _make_alert()  # PRICE_ZSCORE
+        alert_b = AlertEvent.build(
+            quote=_make_quote(),
+            rule_name=RuleName.VOLUME_ZSCORE,
+            severity=AlertSeverity.MEDIUM,
+            triggered_value=4.0,
+            threshold=3.0,
+            context_snapshot={},
+        )
+        rule_a = MagicMock(return_value=alert_a)
+        rule_b = MagicMock(return_value=alert_b)
         rule_c = MagicMock(return_value=None)
         orchestrator = RuleOrchestrator(cfg, rules=(rule_a, rule_b, rule_c))
         publisher = AsyncMock()
