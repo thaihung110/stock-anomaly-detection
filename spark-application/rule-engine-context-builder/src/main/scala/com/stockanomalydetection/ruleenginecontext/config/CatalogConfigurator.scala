@@ -40,15 +40,15 @@ object CatalogConfigurator {
 
   def ensureTableExists(spark: SparkSession): Unit = {
     try {
-      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_gold")
+      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_gold.gold")
     } catch {
       case e: Exception =>
-        throw new RuntimeException(s"Failed to create namespace gravitino_gold: ${e.getMessage}", e)
+        throw new RuntimeException(s"Failed to create namespace gravitino_gold.gold: ${e.getMessage}", e)
     }
 
     try {
       spark.sql("""
-        CREATE TABLE IF NOT EXISTS gravitino_gold.rule_engine_context (
+        CREATE TABLE IF NOT EXISTS gravitino_gold.gold.rule_engine_context (
           symbol              STRING    NOT NULL  COMMENT 'Ticker symbol — Rule Engine cache key',
           as_of_date          DATE      NOT NULL  COMMENT 'Snapshot trading day (UTC calendar)',
 
@@ -83,7 +83,7 @@ object CatalogConfigurator {
     } catch {
       case e: Exception =>
         throw new RuntimeException(
-          s"Failed to create table gravitino_gold.rule_engine_context: ${e.getMessage}",
+          s"Failed to create table gravitino_gold.gold.rule_engine_context: ${e.getMessage}",
           e
         )
     }

@@ -6,7 +6,7 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "hungvt0110/news-ingest-stream:v2.7"
+  image: "hungvt0110/news-ingest-stream:v2.8"
   imagePullPolicy: Always
   mainClass: com.stockanomalydetection.newsingest.NewsIngestStream
   mainApplicationFile: "local:///opt/spark/jars/news-ingest-stream-assembly-1.0.0.jar"
