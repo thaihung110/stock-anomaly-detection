@@ -2,7 +2,6 @@ package com.stockanomalydetection.newsingest.config
 
 final case class AppConfig(
   gravitinoUri:               String,
-  icebergWarehouse:           String,
   minioEndpoint:              String,
   minioAccessKey:             String,
   minioSecretKey:             String,
@@ -25,7 +24,6 @@ object AppConfig {
   def fromEnv(): AppConfig =
     AppConfig(
       gravitinoUri               = sys.env("GRAVITINO_URI"),
-      icebergWarehouse           = sys.env("ICEBERG_WAREHOUSE"),
       minioEndpoint              = sys.env("MINIO_ENDPOINT"),
       minioAccessKey             = sys.env("MINIO_ACCESS_KEY"),
       minioSecretKey             = sys.env("MINIO_SECRET_KEY"),
@@ -35,7 +33,7 @@ object AppConfig {
       gravitinoOauthScope        = sys.env.getOrElse("GRAVITINO_OAUTH_SCOPE", "gravitino"),
       kafkaBootstrapServers      = sys.env("KAFKA_BOOTSTRAP_SERVERS"),
       checkpointLocation         = sys.env("CHECKPOINT_LOCATION"),
-      outputTable                = sys.env.getOrElse("OUTPUT_TABLE", "gravitino_catalog.raw.raw_news_articles"),
+      outputTable                = sys.env.getOrElse("OUTPUT_TABLE", "gravitino_bronze.raw.raw_news_articles"),
       inputTopic                 = sys.env.getOrElse("INPUT_TOPIC", "raw.stock.news"),
       triggerInterval            = sys.env.getOrElse("TRIGGER_INTERVAL", "30 seconds"),
       maxOffsetsPerTrigger       = sys.env.getOrElse("KAFKA_MAX_OFFSETS_PER_TRIGGER", "5000"),

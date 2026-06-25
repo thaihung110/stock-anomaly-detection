@@ -21,8 +21,8 @@ spec:
     # Use Iceberg session catalog instead of Hive metastore-backed spark_catalog.
     "spark.sql.catalog.spark_catalog": "org.apache.iceberg.spark.SparkSessionCatalog"
     "spark.sql.catalog.spark_catalog.type": "in-memory"
-    # Make gravitino catalog the default.
-    "spark.sql.defaultCatalog": "gravitino_catalog"
+    # Make gravitino_silver the default.
+    "spark.sql.defaultCatalog": "gravitino_silver"
 
     # -------------------------------------------------------------------------
     # 2) Spark execution tuning
@@ -78,8 +78,6 @@ spec:
         value: "openhouse-kafka:9092"
       - name: MINIO_ENDPOINT
         value: "http://openhouse-minio:9000"
-      - name: ICEBERG_WAREHOUSE
-        value: "silver"
       - name: CHECKPOINT_LOCATION
         value: "s3a://checkpoints/trades-ohlcv-stream"
       - name: KAFKA_MAX_OFFSETS_PER_TRIGGER
@@ -137,8 +135,6 @@ spec:
         value: "openhouse-kafka:9092"
       - name: MINIO_ENDPOINT
         value: "http://openhouse-minio:9000"
-      - name: ICEBERG_WAREHOUSE
-        value: "silver"
       - name: CHECKPOINT_LOCATION
         value: "s3a://checkpoints/trades-ohlcv-stream"
       - name: KAFKA_MAX_OFFSETS_PER_TRIGGER

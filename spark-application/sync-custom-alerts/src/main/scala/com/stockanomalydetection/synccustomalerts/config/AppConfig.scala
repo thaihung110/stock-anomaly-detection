@@ -3,7 +3,6 @@ package com.stockanomalydetection.synccustomalerts.config
 final case class AppConfig(
   // Gravitino / Iceberg / MinIO
   gravitinoUri:               String,
-  icebergWarehouse:           String,
   minioEndpoint:              String,
   minioAccessKey:             String,
   minioSecretKey:             String,
@@ -23,7 +22,6 @@ final case class AppConfig(
 object AppConfig {
   def fromEnv(): AppConfig = AppConfig(
     gravitinoUri               = sys.env("GRAVITINO_URI"),
-    icebergWarehouse           = sys.env("ICEBERG_WAREHOUSE"),
     minioEndpoint              = sys.env("MINIO_ENDPOINT"),
     minioAccessKey             = sys.env("MINIO_ACCESS_KEY"),
     minioSecretKey             = sys.env("MINIO_SECRET_KEY"),
@@ -34,7 +32,7 @@ object AppConfig {
     jdbcUrl                    = sys.env("JDBC_URL"),
     pgUser                     = sys.env("PG_USER"),
     pgPassword                 = sys.env("PG_PASSWORD"),
-    factTable                  = sys.env.getOrElse("FACT_TABLE", "gravitino_catalog.gold.fact_alert_history"),
+    factTable                  = sys.env.getOrElse("FACT_TABLE", "gravitino_gold.gold.fact_alert_history"),
     watermarkJobName           = sys.env.getOrElse("WATERMARK_JOB_NAME", "sync-custom-alerts")
   )
 }
