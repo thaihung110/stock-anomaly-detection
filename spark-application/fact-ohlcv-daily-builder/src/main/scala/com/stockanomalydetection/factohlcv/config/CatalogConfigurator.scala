@@ -5,28 +5,8 @@ import org.apache.spark.sql.SparkSession
 object CatalogConfigurator {
 
   def configure(spark: SparkSession, cfg: AppConfig): Unit = {
-    val icebergRestUri = cfg.gravitinoUri.stripSuffix("/") + "/iceberg/"
-    val tokenUri =
-      cfg.gravitinoOauthServerUri.stripSuffix("/") + "/" +
-        cfg.gravitinoOauthTokenPath.stripPrefix("/")
-
-    spark.conf.set("spark.sql.catalog.gravitino_catalog", "org.apache.iceberg.spark.SparkCatalog")
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.type", "rest")
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.uri", icebergRestUri)
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.warehouse", cfg.icebergWarehouse)
-
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.rest.auth.type", "oauth2")
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.oauth2-server-uri", tokenUri)
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.token-refresh-enabled", "true")
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.credential", s"spark:${cfg.gravitinoOauthClientSecret}")
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.scope", cfg.gravitinoOauthScope)
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.token-exchange-enabled", "false")
-
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.s3.endpoint", cfg.minioEndpoint)
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.s3.access-key-id", cfg.minioAccessKey)
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.s3.secret-access-key", cfg.minioSecretKey)
-    spark.conf.set("spark.sql.catalog.gravitino_catalog.s3.path-style-access", "true")
+    configureCatalog(spark, "gravitino_silver", "silver", cfg)
+    configureCatalog(spark, "gravitino_gold", "gold", cfg)
 
     val hc = spark.sparkContext.hadoopConfiguration
     hc.set("fs.s3a.endpoint", cfg.minioEndpoint)
@@ -34,17 +14,42 @@ object CatalogConfigurator {
     hc.set("fs.s3a.secret.key", cfg.minioSecretKey)
   }
 
+  private def configureCatalog(spark: SparkSession, name: String, warehouse: String, cfg: AppConfig): Unit = {
+    val icebergRestUri = cfg.gravitinoUri.stripSuffix("/") + "/iceberg/"
+    val tokenUri =
+      cfg.gravitinoOauthServerUri.stripSuffix("/") + "/" +
+        cfg.gravitinoOauthTokenPath.stripPrefix("/")
+
+    spark.conf.set(s"spark.sql.catalog.$name", "org.apache.iceberg.spark.SparkCatalog")
+    spark.conf.set(s"spark.sql.catalog.$name.type", "rest")
+    spark.conf.set(s"spark.sql.catalog.$name.uri", icebergRestUri)
+    spark.conf.set(s"spark.sql.catalog.$name.warehouse", warehouse)
+
+    spark.conf.set(s"spark.sql.catalog.$name.rest.auth.type", "oauth2")
+    spark.conf.set(s"spark.sql.catalog.$name.oauth2-server-uri", tokenUri)
+    spark.conf.set(s"spark.sql.catalog.$name.token-refresh-enabled", "true")
+    spark.conf.set(s"spark.sql.catalog.$name.credential", s"spark:${cfg.gravitinoOauthClientSecret}")
+    spark.conf.set(s"spark.sql.catalog.$name.scope", cfg.gravitinoOauthScope)
+    spark.conf.set(s"spark.sql.catalog.$name.token-exchange-enabled", "false")
+
+    spark.conf.set(s"spark.sql.catalog.$name.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+    spark.conf.set(s"spark.sql.catalog.$name.s3.endpoint", cfg.minioEndpoint)
+    spark.conf.set(s"spark.sql.catalog.$name.s3.access-key-id", cfg.minioAccessKey)
+    spark.conf.set(s"spark.sql.catalog.$name.s3.secret-access-key", cfg.minioSecretKey)
+    spark.conf.set(s"spark.sql.catalog.$name.s3.path-style-access", "true")
+  }
+
   def ensureTableExists(spark: SparkSession): Unit = {
     try {
-      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_catalog.gold")
+      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_gold")
     } catch {
       case e: Exception =>
-        throw new RuntimeException(s"Failed to create namespace gravitino_catalog.gold: ${e.getMessage}", e)
+        throw new RuntimeException(s"Failed to create namespace gravitino_gold: ${e.getMessage}", e)
     }
 
     try {
       spark.sql("""
-        CREATE TABLE IF NOT EXISTS gravitino_catalog.gold.fact_ohlcv_daily (
+        CREATE TABLE IF NOT EXISTS gravitino_gold.fact_ohlcv_daily (
           symbol_key          INT       NOT NULL  COMMENT 'Surrogate key — FK to gold.dim_symbol',
           date_key            INT       NOT NULL  COMMENT 'Surrogate key in YYYYMMDD format — FK to gold.dim_date',
 
@@ -95,7 +100,7 @@ object CatalogConfigurator {
       """)
     } catch {
       case e: Exception =>
-        throw new RuntimeException(s"Failed to create table gravitino_catalog.gold.fact_ohlcv_daily: ${e.getMessage}", e)
+        throw new RuntimeException(s"Failed to create table gravitino_gold.fact_ohlcv_daily: ${e.getMessage}", e)
     }
   }
 }

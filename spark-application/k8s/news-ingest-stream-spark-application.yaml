@@ -28,8 +28,8 @@ spec:
     # Hive metastore schema has been initialised in this cluster.
     "spark.sql.catalog.spark_catalog": "org.apache.iceberg.spark.SparkSessionCatalog"
     "spark.sql.catalog.spark_catalog.type": "in-memory"
-    # Make gravitino_catalog the active default so bare table names resolve here.
-    "spark.sql.defaultCatalog": "gravitino_catalog"
+    # Make gravitino_bronze the active default so bare table names resolve here.
+    "spark.sql.defaultCatalog": "gravitino_bronze"
 
     # -------------------------------------------------------------------------
     # 2) Spark execution tuning
@@ -92,8 +92,6 @@ spec:
         value: "openhouse-kafka:9092"
       - name: MINIO_ENDPOINT
         value: "http://openhouse-minio:9000"
-      - name: ICEBERG_WAREHOUSE
-        value: "bronze"
       - name: CHECKPOINT_LOCATION
         value: "s3a://checkpoints/news-ingest-stream"
       - name: KAFKA_MAX_OFFSETS_PER_TRIGGER
@@ -110,6 +108,8 @@ spec:
         value: "realms/iceberg/protocol/openid-connect/token"
       - name: GRAVITINO_OAUTH_SCOPE
         value: "gravitino"
+      - name: OUTPUT_TABLE
+        value: "gravitino_bronze.raw.raw_news_articles"
       - name: MINIO_ACCESS_KEY
         valueFrom:
           secretKeyRef:
@@ -151,8 +151,6 @@ spec:
         value: "openhouse-kafka:9092"
       - name: MINIO_ENDPOINT
         value: "http://openhouse-minio:9000"
-      - name: ICEBERG_WAREHOUSE
-        value: "bronze"
       - name: CHECKPOINT_LOCATION
         value: "s3a://checkpoints/news-ingest-stream"
       - name: KAFKA_MAX_OFFSETS_PER_TRIGGER
@@ -169,6 +167,8 @@ spec:
         value: "realms/iceberg/protocol/openid-connect/token"
       - name: GRAVITINO_OAUTH_SCOPE
         value: "gravitino"
+      - name: OUTPUT_TABLE
+        value: "gravitino_bronze.raw.raw_news_articles"
       - name: MINIO_ACCESS_KEY
         valueFrom:
           secretKeyRef:

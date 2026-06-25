@@ -4,7 +4,6 @@ import scala.io.Source
 
 final case class AppConfig(
   gravitinoUri:               String,
-  icebergWarehouse:           String,
   minioEndpoint:              String,
   minioAccessKey:             String,
   minioSecretKey:             String,
@@ -31,7 +30,6 @@ final case class AppConfig(
 object AppConfig {
   def fromEnv(): AppConfig = AppConfig(
     gravitinoUri               = sys.env("GRAVITINO_URI"),
-    icebergWarehouse           = sys.env("ICEBERG_WAREHOUSE"),
     minioEndpoint              = sys.env("MINIO_ENDPOINT"),
     minioAccessKey             = sys.env("MINIO_ACCESS_KEY"),
     minioSecretKey             = sys.env("MINIO_SECRET_KEY"),
@@ -40,7 +38,7 @@ object AppConfig {
     gravitinoOauthTokenPath    = sys.env.getOrElse("GRAVITINO_OAUTH_TOKEN_PATH", "realms/iceberg/protocol/openid-connect/token"),
     gravitinoOauthScope        = sys.env.getOrElse("GRAVITINO_OAUTH_SCOPE", "gravitino"),
     symbolsFile                = sys.env.getOrElse("SYMBOLS_FILE", "/opt/spark/conf/symbols.txt"),
-    outputTable                = sys.env.getOrElse("OUTPUT_TABLE", "gravitino_catalog.raw.raw_ohlcv_daily"),
+    outputTable                = sys.env.getOrElse("OUTPUT_TABLE", "gravitino_bronze.raw.raw_ohlcv_daily"),
     fetchBatchSize             = sys.env.getOrElse("FETCH_BATCH_SIZE", "50").toInt,
     backfillYears              = sys.env.getOrElse("BACKFILL_YEARS", "20").toInt
   )
