@@ -41,15 +41,15 @@ object CatalogConfigurator {
 
   def ensureTableExists(spark: SparkSession): Unit = {
     try {
-      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_gold")
+      spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_gold.gold")
     } catch {
       case e: Exception =>
-        throw new RuntimeException(s"Failed to create namespace gravitino_gold: ${e.getMessage}", e)
+        throw new RuntimeException(s"Failed to create namespace gravitino_gold.gold: ${e.getMessage}", e)
     }
 
     try {
       spark.sql("""
-        CREATE TABLE IF NOT EXISTS gravitino_gold.fact_ohlcv_daily (
+        CREATE TABLE IF NOT EXISTS gravitino_gold.gold.fact_ohlcv_daily (
           symbol_key          INT       NOT NULL  COMMENT 'Surrogate key — FK to gold.dim_symbol',
           date_key            INT       NOT NULL  COMMENT 'Surrogate key in YYYYMMDD format — FK to gold.dim_date',
 
@@ -100,7 +100,7 @@ object CatalogConfigurator {
       """)
     } catch {
       case e: Exception =>
-        throw new RuntimeException(s"Failed to create table gravitino_gold.fact_ohlcv_daily: ${e.getMessage}", e)
+        throw new RuntimeException(s"Failed to create table gravitino_gold.gold.fact_ohlcv_daily: ${e.getMessage}", e)
     }
   }
 }

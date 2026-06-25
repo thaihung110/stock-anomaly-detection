@@ -6,7 +6,7 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "hungvt0110/news-cleaner:v0.3"
+  image: "hungvt0110/news-cleaner:v0.4"
   imagePullPolicy: Always
   timeToLiveSeconds: 3600
   mainClass: com.stockanomalydetection.newscleaner.NewsCleanerMain

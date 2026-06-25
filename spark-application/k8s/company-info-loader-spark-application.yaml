@@ -6,7 +6,7 @@ metadata:
 spec:
   type: Scala
   mode: cluster
-  image: "hungvt0110/company-info-loader:v0.2"
+  image: "hungvt0110/company-info-loader:v0.3"
   imagePullPolicy: Always
   timeToLiveSeconds: 3600
   mainClass: com.stockanomalydetection.companyinfo.CompanyInfoLoader

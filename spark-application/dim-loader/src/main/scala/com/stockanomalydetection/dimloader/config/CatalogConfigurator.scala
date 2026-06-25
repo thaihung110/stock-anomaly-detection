@@ -40,10 +40,10 @@ object CatalogConfigurator {
   }
 
   def ensureTablesExist(spark: SparkSession): Unit = {
-    spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_gold")
+    spark.sql("CREATE NAMESPACE IF NOT EXISTS gravitino_gold.gold")
 
     spark.sql("""
-      CREATE TABLE IF NOT EXISTS gravitino_gold.dim_symbol (
+      CREATE TABLE IF NOT EXISTS gravitino_gold.gold.dim_symbol (
         symbol_key         INT       NOT NULL  COMMENT 'Surrogate key',
         symbol             STRING    NOT NULL  COMMENT 'Natural key — ticker symbol',
         company_name       STRING              COMMENT 'Full legal company name',
@@ -70,7 +70,7 @@ object CatalogConfigurator {
     """)
 
     spark.sql("""
-      CREATE TABLE IF NOT EXISTS gravitino_gold.dim_date (
+      CREATE TABLE IF NOT EXISTS gravitino_gold.gold.dim_date (
         date_key             INT       NOT NULL  COMMENT 'Surrogate key in YYYYMMDD format',
         full_date            DATE      NOT NULL  COMMENT 'Calendar date',
         day_of_week          INT                 COMMENT '1=Monday … 7=Sunday',
@@ -95,7 +95,7 @@ object CatalogConfigurator {
     """)
 
     spark.sql("""
-      CREATE TABLE IF NOT EXISTS gravitino_gold.dim_time (
+      CREATE TABLE IF NOT EXISTS gravitino_gold.gold.dim_time (
         time_key       INT     NOT NULL  COMMENT 'Surrogate key in HHMM format (e.g. 0930)',
         hour           INT               COMMENT 'Hour component (0–23)',
         minute         INT               COMMENT 'Minute component (0–59)',
@@ -113,7 +113,7 @@ object CatalogConfigurator {
     """)
 
     spark.sql("""
-      CREATE TABLE IF NOT EXISTS gravitino_gold.dim_anomaly_type (
+      CREATE TABLE IF NOT EXISTS gravitino_gold.gold.dim_anomaly_type (
         anomaly_type_key INT     NOT NULL  COMMENT 'Surrogate key',
         anomaly_type     STRING  NOT NULL  COMMENT 'Machine-readable type code (e.g. PRICE_SPIKE)',
         anomaly_category STRING            COMMENT 'Broad category: PRICE, VOLUME, VOLATILITY, MOMENTUM',
@@ -129,7 +129,7 @@ object CatalogConfigurator {
     """)
 
     spark.sql("""
-      CREATE TABLE IF NOT EXISTS gravitino_gold.dim_rule (
+      CREATE TABLE IF NOT EXISTS gravitino_gold.gold.dim_rule (
         rule_key            INT     NOT NULL  COMMENT 'Surrogate key',
         rule_code           STRING  NOT NULL  COMMENT 'Machine-readable rule code (e.g. PRICE_Z)',
         rule_name           STRING            COMMENT 'Human-readable rule name',
@@ -145,7 +145,7 @@ object CatalogConfigurator {
     """)
 
     spark.sql("""
-      CREATE TABLE IF NOT EXISTS gravitino_gold.dim_news_category (
+      CREATE TABLE IF NOT EXISTS gravitino_gold.gold.dim_news_category (
         category_key          INT     NOT NULL  COMMENT 'Surrogate key',
         category_code         STRING  NOT NULL  COMMENT 'LLM output label: NEWS_EXPLAINED, UNEXPLAINED, UNCERTAIN',
         category_name         STRING            COMMENT 'Human-readable category name',
