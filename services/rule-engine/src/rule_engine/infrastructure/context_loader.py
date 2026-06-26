@@ -58,13 +58,25 @@ def load_context(cfg: Settings) -> dict[str, dict[str, float]]:
     )
 
     table = catalog.load_table(cfg.rule_engine_context_table)
+    # rule_engine_context retains one partition per as_of_date (grain:
+    # symbol x trading day). Scan all rows but keep only the most recent
+    # as_of_date per symbol — otherwise the dict would be overwritten in
+    # non-deterministic Iceberg scan order and may load stale baselines.
     arrow_table = table.scan(
-        selected_fields=("symbol", *_CONTEXT_FIELDS)
+        selected_fields=("symbol", "as_of_date", *_CONTEXT_FIELDS)
     ).to_arrow()
 
     context: dict[str, dict[str, float]] = {}
+    latest_as_of: dict[str, object] = {}
     for i in range(arrow_table.num_rows):
         symbol: str = arrow_table.column("symbol")[i].as_py().upper()
+        as_of_date = arrow_table.column("as_of_date")[i].as_py()
+
+        prev = latest_as_of.get(symbol)
+        if prev is not None and as_of_date <= prev:
+            continue
+
+        latest_as_of[symbol] = as_of_date
         context[symbol] = {
             field: float(
                 v

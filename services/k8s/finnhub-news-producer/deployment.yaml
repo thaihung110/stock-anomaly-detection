@@ -29,7 +29,7 @@ spec:
               echo "kafka is ready"
       containers:
         - name: finnhub-news-producer
-          image: hungvt0110/finnhub-news-producer:v0.1
+          image: hungvt0110/finnhub-news-producer:v0.2
           imagePullPolicy: Always
           env:
             - name: FINNHUB_API_KEY
