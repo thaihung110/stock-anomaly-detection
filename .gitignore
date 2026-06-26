@@ -61,3 +61,7 @@ pyrightconfig.json
 docs/book
 
 docs/backend-redesign-plan.md
+
+docs/ai-agent-plan.md
+docs/data-lineage.md
+docs/intraday-alert-consumer-plan.md

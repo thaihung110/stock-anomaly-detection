@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # Delay between per-symbol requests to stay under 60 req/min
     request_delay_sec: float = 1.1
     # How many calendar days back to fetch news per poll
-    lookback_days: int = 2
+    lookback_days: int = 7
     # Max size of in-memory dedup set before it is cleared
     dedup_max_size: int = 10_000
 
