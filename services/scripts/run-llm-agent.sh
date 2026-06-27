@@ -1,21 +1,27 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 NAMESPACE="stock-anomaly-detection"
 DEPLOYMENT_NAME="llm-agent"
+TIMEOUT="${DEPLOY_TIMEOUT:-120s}"
 
 echo "Deploying $DEPLOYMENT_NAME..."
 kubectl apply -f "$(dirname "$0")/../k8s/llm-agent/deployment.yaml"
 
-echo "Checking deployment status..."
-if kubectl wait --for=condition=available=1 deployment/$DEPLOYMENT_NAME \
-  -n $NAMESPACE --timeout=10s 2>/dev/null; then
-  echo "$DEPLOYMENT_NAME is ready"
+echo "Waiting for $DEPLOYMENT_NAME rollout (timeout: $TIMEOUT)..."
+if kubectl rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE --timeout=$TIMEOUT; then
+  echo "✓ $DEPLOYMENT_NAME is ready"
 else
-  echo "Waiting for $DEPLOYMENT_NAME to become ready (this may take up to 60s)..."
-  kubectl wait --for=condition=available=1 deployment/$DEPLOYMENT_NAME \
-    -n $NAMESPACE --timeout=60s 2>/dev/null || true
+  echo "❌ $DEPLOYMENT_NAME rollout failed. Diagnosing..."
+  echo ""
+  echo "Pod status:"
+  kubectl get pods -n $NAMESPACE -l app=$DEPLOYMENT_NAME -o wide
+  echo ""
+  echo "Recent events:"
+  kubectl describe deployment/$DEPLOYMENT_NAME -n $NAMESPACE | grep -A 30 "^Events:"
+  exit 1
 fi
 
-echo "$DEPLOYMENT_NAME started. Monitor with:"
+echo ""
+echo "Monitor with:"
 echo "  kubectl logs -f -n $NAMESPACE deployment/$DEPLOYMENT_NAME"
