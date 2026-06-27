@@ -17,6 +17,28 @@ class AlertSeverity(str, Enum):
     HIGH = "HIGH"
 
 
+class LLMJudgement(str, Enum):
+    EXPLAINED = "EXPLAINED"
+    UNEXPLAINED = "UNEXPLAINED"
+    UNCERTAIN = "UNCERTAIN"
+
+
+class NewsCategory(str, Enum):
+    EARNINGS = "EARNINGS"
+    MACRO = "MACRO"
+    REGULATORY = "REGULATORY"
+    SECTOR = "SECTOR"
+    CORPORATE = "CORPORATE"
+    OTHER = "OTHER"
+
+
+class NewsRef(BaseModel):
+    title: str
+    url: str | None = None
+    published_at: str
+    source: str | None = None
+
+
 class AlertEvent(BaseModel):
     """Mirror of rule-engine AlertEvent — contract for alerts.raw topic."""
 
@@ -28,6 +50,45 @@ class AlertEvent(BaseModel):
     triggered_value: float
     threshold: float
     context_snapshot: dict[str, float]
+
+    @field_validator("symbol")
+    @classmethod
+    def uppercase_symbol(cls, v: str) -> str:
+        return v.upper()
+
+
+class ConfirmedAlertEvent(AlertEvent):
+    """Mirror of llm-agent ConfirmedAlertEvent — contract for alerts.confirmed topic.
+
+    Inherits AlertEvent so parsers expecting AlertEvent still work on this type.
+    """
+
+    llm_judgement: LLMJudgement
+    final_explanation: str | None = None
+    news_summary: str | None = None
+    news_category: NewsCategory | None = None
+    news_refs: list[NewsRef] = Field(default_factory=list)
+    agent_version: str = "1.0"
+
+
+class FollowUpEvent(BaseModel):
+    """Mirror of llm-agent FollowUpEvent — contract for alerts.followup topic.
+
+    Only emitted on FLIP or CONFIRM (never when re-check finds nothing new).
+    """
+
+    ref_alert_id: str
+    symbol: str
+    prev_judgement: LLMJudgement
+    new_judgement: LLMJudgement
+    news_summary: str | None = None
+    news_refs: list[NewsRef] = Field(default_factory=list)
+    emitted_at: str
+    # Optional analytics fields — populated by llm-agent (Stage D opt-in).
+    # Carry the original alert's detection time and rule so anomaly_judgement
+    # follow-up rows support time-to-explanation queries without a join.
+    event_ts: str | None = None
+    rule_name: str | None = None
 
     @field_validator("symbol")
     @classmethod
