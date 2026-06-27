@@ -87,7 +87,7 @@ spec:
     spec:
       containers:
         - name: llm-agent
-          image: hungvt0110/llm-agent:latest
+          image: hungvt0110/llm-agent:v0.1
           imagePullPolicy: Always
           ports:
             - containerPort: 8081
