@@ -44,11 +44,11 @@ def _mock_catalog_from_rows(rows: list[dict]) -> MagicMock:
 class TestArrowToArticles:
     def test_maps_fresh_columns(self) -> None:
         table = _make_arrow_table(
-            [{"title": "AAPL Up", "article_url": "http://x.com", "source_name": "Reuters", "published_at": "2026-06-01T10:00:00Z"}]
+            [{"title": "AAPL Up", "url": "http://x.com", "source_name": "Reuters", "published_at": "2026-06-01T10:00:00Z"}]
         )
         result = _arrow_to_articles(
             table,
-            {"title": "title", "article_url": "url", "source_name": "source", "published_at": "published_at"},
+            {"title": "title", "url": "url", "source_name": "source", "published_at": "published_at"},
         )
         assert len(result) == 1
         assert result[0]["title"] == "AAPL Up"
@@ -57,7 +57,7 @@ class TestArrowToArticles:
 
     def test_missing_column_returns_none(self) -> None:
         table = _make_arrow_table([{"title": "Story"}])
-        result = _arrow_to_articles(table, {"title": "title", "article_url": "url"})
+        result = _arrow_to_articles(table, {"title": "title", "url": "url"})
         assert result[0]["url"] is None
 
     def test_empty_table(self) -> None:
@@ -97,7 +97,7 @@ def _two_catalog_side_effect(fresh_rows: list[dict], hist_rows: list[dict]):
 class TestFetchNews:
     @patch("llm_agent.infrastructure.news_reader._build_catalog")
     def test_union_from_both_catalogs(self, mock_build: MagicMock) -> None:
-        fresh = [{"title": "Fresh Story", "article_url": "http://a.com", "source_name": "BBC", "published_at": "2026-06-01T14:00:00Z", "summary": ""}]
+        fresh = [{"title": "Fresh Story", "url": "http://a.com", "source_name": "BBC", "published_at": "2026-06-01T14:00:00Z", "description": ""}]
         hist = [{"title": "Old Story", "url": "http://b.com", "source_name": "CNN", "published_at": "2026-06-01T08:00:00Z", "description": ""}]
         mock_build.side_effect = _two_catalog_side_effect(fresh, hist)
         result = fetch_news("AAPL", _make_cfg())
@@ -106,7 +106,7 @@ class TestFetchNews:
     @patch("llm_agent.infrastructure.news_reader._build_catalog")
     def test_dedup_same_url(self, mock_build: MagicMock) -> None:
         shared_url = "http://shared.com"
-        fresh = [{"title": "Same Story", "article_url": shared_url, "source_name": "Reuters", "published_at": "2026-06-01T14:00:00Z", "summary": ""}]
+        fresh = [{"title": "Same Story", "url": shared_url, "source_name": "Reuters", "published_at": "2026-06-01T14:00:00Z", "description": ""}]
         hist = [{"title": "Same Story", "url": shared_url, "source_name": "Reuters", "published_at": "2026-06-01T14:00:00Z", "description": ""}]
         mock_build.side_effect = _two_catalog_side_effect(fresh, hist)
         result = fetch_news("AAPL", _make_cfg())
@@ -114,7 +114,7 @@ class TestFetchNews:
 
     @patch("llm_agent.infrastructure.news_reader._build_catalog")
     def test_dedup_same_title_no_url(self, mock_build: MagicMock) -> None:
-        fresh = [{"title": "Duplicate Title", "article_url": None, "source_name": "X", "published_at": "2026-06-01T14:00:00Z", "summary": ""}]
+        fresh = [{"title": "Duplicate Title", "url": None, "source_name": "X", "published_at": "2026-06-01T14:00:00Z", "description": ""}]
         hist = [{"title": "Duplicate Title", "url": None, "source_name": "X", "published_at": "2026-06-01T14:00:00Z", "description": ""}]
         mock_build.side_effect = _two_catalog_side_effect(fresh, hist)
         result = fetch_news("AAPL", _make_cfg())
@@ -122,7 +122,7 @@ class TestFetchNews:
 
     @patch("llm_agent.infrastructure.news_reader._build_catalog")
     def test_top_k_truncates(self, mock_build: MagicMock) -> None:
-        fresh = [{"title": f"F{i}", "article_url": f"http://f{i}.com", "source_name": "S", "published_at": f"2026-06-01T{i:02d}:00:00Z", "summary": ""} for i in range(5)]
+        fresh = [{"title": f"F{i}", "url": f"http://f{i}.com", "source_name": "S", "published_at": f"2026-06-01T{i:02d}:00:00Z", "description": ""} for i in range(5)]
         hist = [{"title": f"H{i}", "url": f"http://h{i}.com", "source_name": "S", "published_at": f"2026-05-31T{i:02d}:00:00Z", "description": ""} for i in range(5)]
         mock_build.side_effect = _two_catalog_side_effect(fresh, hist)
         result = fetch_news("AAPL", _make_cfg(top_k=3))
@@ -146,7 +146,7 @@ class TestFetchNews:
 
     @patch("llm_agent.infrastructure.news_reader._build_catalog")
     def test_silver_failure_still_returns_fresh(self, mock_build: MagicMock) -> None:
-        fresh = [{"title": "Fresh", "article_url": "http://f.com", "source_name": "BB", "published_at": "2026-06-01T14:00:00Z", "summary": ""}]
+        fresh = [{"title": "Fresh", "url": "http://f.com", "source_name": "BB", "published_at": "2026-06-01T14:00:00Z", "description": ""}]
         call_count = {"n": 0}
 
         def side_effect(name: str, warehouse: str, cfg: object) -> MagicMock:
@@ -168,8 +168,8 @@ class TestFetchNews:
     @patch("llm_agent.infrastructure.news_reader._build_catalog")
     def test_sorted_newest_first(self, mock_build: MagicMock) -> None:
         fresh = [
-            {"title": "Early", "article_url": "http://e.com", "source_name": "X", "published_at": "2026-06-01T08:00:00Z", "summary": ""},
-            {"title": "Late", "article_url": "http://l.com", "source_name": "X", "published_at": "2026-06-01T14:00:00Z", "summary": ""},
+            {"title": "Early", "url": "http://e.com", "source_name": "X", "published_at": "2026-06-01T08:00:00Z", "description": ""},
+            {"title": "Late", "url": "http://l.com", "source_name": "X", "published_at": "2026-06-01T14:00:00Z", "description": ""},
         ]
         mock_build.side_effect = _two_catalog_side_effect(fresh, [])
         result = fetch_news("AAPL", _make_cfg())
