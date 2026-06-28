@@ -15,13 +15,32 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import structlog
+from pyiceberg.expressions import And, EqualTo, GreaterThanOrEqual
+from pyiceberg.utils.datetime import datetime_to_micros
 
 from llm_agent.config import Settings
 
 logger = structlog.get_logger(__name__)
 
+
+def _published_after(symbol: str, cutoff: datetime) -> And:
+    """Build a PyIceberg predicate: symbol == :symbol AND published_at >= :cutoff.
+
+    Uses the typed expression API (not a string row_filter) so the timestamp
+    literal is bound to the column type by PyIceberg.  This is robust against
+    the column being either ``timestamp`` or ``timestamptz`` — passing the epoch
+    micros (int) converts cleanly to both, avoiding ISO-8601 string-format bugs
+    (e.g. "Z" vs "+00:00", missing zone offset).
+    """
+    return And(
+        EqualTo("symbol", symbol),
+        GreaterThanOrEqual("published_at", datetime_to_micros(cutoff)),
+    )
+
 # Columns to select per source.  Mapped to canonical keys: title / url / source / published_at.
-_FRESH_COLS = ("symbol", "title", "article_url", "source_name", "published_at", "summary")
+# Verified against Spark schema in news-ingest-stream/NewsSchema.scala (bronze)
+# and news-cleaner/NewsCleanerPipeline.scala (silver) — both use "url", not "article_url".
+_FRESH_COLS = ("symbol", "title", "url", "source_name", "published_at", "description")
 _HIST_COLS = ("symbol", "title", "url", "source_name", "published_at", "description")
 
 
@@ -87,15 +106,13 @@ def _fetch_fresh(symbol: str, cutoff: datetime, cfg: Settings) -> list[dict[str,
     table = catalog.load_table(cfg.news_table)
     arrow = table.scan(
         selected_fields=_FRESH_COLS,
-        row_filter=(
-            f"symbol = '{symbol}' AND published_at >= '{cutoff.isoformat()}'"
-        ),
+        row_filter=_published_after(symbol, cutoff),
     ).to_arrow()
     return _arrow_to_articles(
         arrow,
         {
             "title": "title",
-            "article_url": "url",
+            "url": "url",
             "source_name": "source",
             "published_at": "published_at",
         },
@@ -110,9 +127,7 @@ def _fetch_historical(
     table = catalog.load_table(cfg.news_digest_table)
     arrow = table.scan(
         selected_fields=_HIST_COLS,
-        row_filter=(
-            f"symbol = '{symbol}' AND published_at >= '{cutoff.isoformat()}'"
-        ),
+        row_filter=_published_after(symbol, cutoff),
     ).to_arrow()
     return _arrow_to_articles(
         arrow,

@@ -42,7 +42,8 @@ V33_TOPICS=(
   "alerts.raw"
   "alerts.user"
   "alerts.failed"
-  "alerts.confirmed"
+  "alerts.confirmed"   # LLM Agent output → Alert Service (DELIVERY_SOURCE=confirmed)
+  "alerts.followup"    # LLM Agent re-check → Alert Service (Stage C follow-up)
 )
 
 create_topic() {
