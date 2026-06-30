@@ -2,11 +2,11 @@
 set -euo pipefail
 
 NAMESPACE="stock-anomaly-detection"
-DEPLOYMENT_NAME="telegram-bot"
+DEPLOYMENT_NAME="llm-agent"
 TIMEOUT="${DEPLOY_TIMEOUT:-120s}"
 
 echo "Deploying $DEPLOYMENT_NAME..."
-kubectl apply -f "$(dirname "$0")/../k8s/telegram-bot/deployment.yaml"
+kubectl apply -f "$(dirname "$0")/../k8s/llm-agent/deployment.yaml"
 
 echo "Waiting for $DEPLOYMENT_NAME rollout (timeout: $TIMEOUT)..."
 if kubectl rollout status deployment/$DEPLOYMENT_NAME -n $NAMESPACE --timeout=$TIMEOUT; then

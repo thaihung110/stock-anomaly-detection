@@ -1,5 +1,12 @@
+from enum import Enum
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class DeliverySource(str, Enum):
+    RAW = "raw"
+    CONFIRMED = "confirmed"
 
 
 class Settings(BaseSettings):
@@ -51,6 +58,10 @@ class Settings(BaseSettings):
     iceberg_oauth2_scope: str = "gravitino"
     iceberg_warehouse: str = "gold"
     fact_alert_history_table: str = "gold.fact_alert_history"
+    # Stage D (opt-in): LLM judgement analytics table — only used when
+    # delivery_source == CONFIRMED; ignored in raw mode.
+    anomaly_judgement_table: str = "gold.anomaly_judgement"
+    judgement_write_timeout_sec: float = 10.0
 
     # MinIO / S3 credentials for direct object-store access from PyIceberg
     s3_endpoint: str = "http://openhouse-minio:9000"
@@ -58,6 +69,19 @@ class Settings(BaseSettings):
     s3_secret_access_key: str = ""
     s3_region: str = "us-east-1"
     s3_path_style_access: bool = True
+
+    # Stage A — LLM agent integration (Bước 2)
+    # delivery_source controls which Kafka topic alert-service consumes system alerts from:
+    #   "raw"       — alerts.raw (default; LLM agent off or not yet deployed)
+    #   "confirmed" — alerts.confirmed (LLM agent on; flip this last, rollback by reverting)
+    delivery_source: DeliverySource = DeliverySource.RAW
+    kafka_confirmed_topic: str = "alerts.confirmed"
+    kafka_confirmed_consumer_group: str = "alert-service-confirmed"
+    kafka_followup_topic: str = "alerts.followup"
+    kafka_followup_consumer_group: str = "alert-service-followup"
+    # When True, MEDIUM+EXPLAINED alerts are delivered only to subscribers who have
+    # the symbol on their watchlist (reduces noise for already-explained anomalies).
+    watchlist_gating: bool = False
 
     # Phase 5 — proactive rate-limit + DLQ
     # Per-replica budget. With 1 replica the global cap stays under Telegram's
