@@ -31,10 +31,21 @@ from alert_service.telegram_client import (
 
 from alert_service.config import Settings
 from alert_service.dlq_producer import DLQPublisher
-from alert_service.formatter import format_custom_message, format_message
+from alert_service.formatter import (
+    format_confirmed_message,
+    format_custom_message,
+    format_followup_message,
+    format_message,
+)
 from alert_service.history_writer import append_alert_history_batch
 from alert_service.rate_limiter import PerChatRateLimiter
-from alert_service.schema import AlertEvent, CustomAlertEvent, DLQReason
+from alert_service.schema import (
+    AlertEvent,
+    ConfirmedAlertEvent,
+    CustomAlertEvent,
+    DLQReason,
+    FollowUpEvent,
+)
 from alert_service.subscriber_cache import SubscriberCache
 from alert_service.subscriber_repository import Subscriber
 
@@ -116,9 +127,17 @@ class AlertDeliveryService:
             return
 
         # Fan out Telegram — per-recipient failure does not abort others.
-        text = format_message(event)
+        # ConfirmedAlertEvent carries the LLM "AI Analysis" block and is rendered
+        # as plain text (parse_mode=None) since LLM output may contain MarkdownV2
+        # special chars.  Plain AlertEvent keeps the legacy Markdown rendering.
+        if isinstance(event, ConfirmedAlertEvent):
+            text = format_confirmed_message(event)
+            parse_mode: str | None = None
+        else:
+            text = format_message(event)
+            parse_mode = "Markdown"
         results = await asyncio.gather(
-            *(self._deliver_one(event, text, sub) for sub in recipients),
+            *(self._deliver_one(event, text, sub, parse_mode) for sub in recipients),
             return_exceptions=True,
         )
         for result in results:
@@ -172,6 +191,51 @@ class AlertDeliveryService:
                 error=str(exc),
             )
 
+    async def deliver_followup(self, event: FollowUpEvent) -> None:
+        """Fan a follow-up re-check update out to subscribers of the symbol.
+
+        A FollowUpEvent is an *update* to an alert already delivered, so it does
+        NOT write fact_alert_history (no new detection).  It reuses the same
+        watchlist routing as fan_out, rendered as plain text (parse_mode=None).
+        Per-recipient failure is logged; it does not abort the others.
+        """
+        try:
+            subscribers = await self._cache.get(event.symbol)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error(
+                "followup_subscriber_lookup_failed",
+                ref_alert_id=event.ref_alert_id,
+                symbol=event.symbol,
+                error=str(exc),
+            )
+            return
+
+        recipients = self._resolve_recipients(subscribers)
+        if not recipients:
+            logger.warning(
+                "followup_no_recipients",
+                symbol=event.symbol,
+                ref_alert_id=event.ref_alert_id,
+            )
+            return
+
+        text = format_followup_message(event)
+        for sub in recipients:
+            if self._rate_limiter is not None:
+                await self._rate_limiter.acquire(sub.chat_id)
+            try:
+                await self._telegram.send_message(sub.chat_id, text, parse_mode=None)
+            except TelegramError as exc:
+                logger.error(
+                    "followup_delivery_failed",
+                    ref_alert_id=event.ref_alert_id,
+                    symbol=event.symbol,
+                    chat_id=str(sub.chat_id),
+                    error=str(exc),
+                )
+
     def _resolve_custom_chat(self, event: CustomAlertEvent) -> int | str | None:
         """Return the destination chat_id for a custom alert.
 
@@ -211,6 +275,7 @@ class AlertDeliveryService:
         event: AlertEvent,
         text: str,
         subscriber: Subscriber,
+        parse_mode: str | None = "Markdown",
     ) -> None:
         """Send one Telegram message.  History has already been written."""
         chat_id: int | str = subscriber.chat_id
@@ -219,7 +284,7 @@ class AlertDeliveryService:
             await self._rate_limiter.acquire(chat_id)
 
         try:
-            await self._telegram.send_message(chat_id, text)
+            await self._telegram.send_message(chat_id, text, parse_mode=parse_mode)
         except TelegramError as exc:
             reason = _classify_failure(exc)
             logger.error(

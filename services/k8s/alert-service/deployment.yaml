@@ -6,17 +6,29 @@ metadata:
   namespace: stock-anomaly-detection
 data:
   KAFKA_BOOTSTRAP_SERVERS: "openhouse-kafka:9092"
-  # ADR-002: bypass LLM agent (not yet deployed) — consume from alerts.raw directly
-  KAFKA_INPUT_TOPIC: "alerts.raw"
-  KAFKA_CONSUMER_GROUP: "alert-service"
+  # LLM agent ON — consume from alerts.confirmed (ConfirmedAlertEvent + AI block).
+  # ADR-002 lifted: llm-agent is deployed and publishing to alerts.confirmed.
+  # Rollback: set KAFKA_INPUT_TOPIC=alerts.raw AND DELIVERY_SOURCE=raw, then apply.
+  KAFKA_INPUT_TOPIC: "alerts.confirmed"
+  KAFKA_CONSUMER_GROUP: "alert-service-confirmed"
   KAFKA_USER_ALERT_TOPIC: "alerts.user"
   KAFKA_USER_CONSUMER_GROUP: "alert-service-user"
+  # Stage A — LLM integration flags
+  # DELIVERY_SOURCE controls formatter + judgement_writer:
+  #   "raw"       → format_message(AlertEvent), no judgement write
+  #   "confirmed" → format_confirmed_message(ConfirmedAlertEvent), write anomaly_judgement
+  DELIVERY_SOURCE: "confirmed"
+  KAFKA_CONFIRMED_TOPIC: "alerts.confirmed"
+  KAFKA_CONFIRMED_CONSUMER_GROUP: "alert-service-confirmed"
+  KAFKA_FOLLOWUP_TOPIC: "alerts.followup"
+  KAFKA_FOLLOWUP_CONSUMER_GROUP: "alert-service-followup"
   ICEBERG_CATALOG_NAME: "stock_catalog"
   ICEBERG_CATALOG_URI: "http://openhouse-gravitino:9001/iceberg/"
   ICEBERG_OAUTH2_SERVER_URI: "http://openhouse-keycloak/realms/iceberg/protocol/openid-connect/token"
   ICEBERG_OAUTH2_SCOPE: "gravitino"
   ICEBERG_WAREHOUSE: "gold"
   FACT_ALERT_HISTORY_TABLE: "gold.fact_alert_history"
+  ANOMALY_JUDGEMENT_TABLE: "gold.anomaly_judgement"
   S3_ENDPOINT: "http://openhouse-minio:9000"
   S3_REGION: "us-east-1"
   S3_PATH_STYLE_ACCESS: "true"
