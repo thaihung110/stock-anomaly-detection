@@ -142,8 +142,8 @@ spec:
   executor:
     instances: 1
     cores: 1
-    memory: "1g"
-    memoryOverhead: "512m"
+    memory: "768m"
+    memoryOverhead: "384m"
     env:
       - name: GRAVITINO_URI
         value: "http://openhouse-gravitino:9001"
