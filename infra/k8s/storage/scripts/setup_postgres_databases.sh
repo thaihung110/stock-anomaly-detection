@@ -107,7 +107,7 @@ create_db_and_user \
 echo ""
 
 create_db_and_user \
-  "iceberg_catalog" \
+  "iceberg_catalog_db" \
   "iceberg" \
   "iceberg" \
   "Iceberg table metadata backend (schemas/snapshots)"

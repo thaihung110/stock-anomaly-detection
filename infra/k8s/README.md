@@ -8,8 +8,7 @@ This directory contains all Kubernetes deployment configurations for the data pl
 infra/k8s/
 ├── storage/           # Storage and data management layer
 ├── orchestration/     # Workflow and messaging layer
-├── ingestion/         # Data ingestion services
-└── compute/           # Compute and deployment automation
+└── compute/           # Compute layer: Spark Operator + Trino
 ```
 
 ## Components Overview
@@ -18,15 +17,14 @@ infra/k8s/
 
 **MinIO** - Object Storage
 
-- S3-compatible storage for data lakes
-- Buckets: `raw`, `bronze`, `silver`, `gold`
+- S3-compatible storage for the Iceberg lakehouse (Bronze/Silver/Gold layers)
 - Credentials: `admin` / `admin123`
 - Deployment: Helm chart (Bitnami)
 
 **PostgreSQL** - Relational Database
 
 - Metadata storage for platform components
-- Databases: `keycloak`, `catalog`, `openfga`, `source_api`
+- Databases: `keycloak`, `gravitino_db`, `iceberg_catalog_db`, `stock_anomaly`
 - Credentials: `postgres` / `admin`
 - Deployment: Helm chart (Bitnami)
 
@@ -34,23 +32,16 @@ infra/k8s/
 
 - OAuth2/OIDC authentication provider
 - Realm: `iceberg`
-- Clients: `lakekeeper` (public), `spark` (confidential)
+- Clients: `gravitino` (public, Web UI login), `spark` (confidential, machine-to-machine)
 - HTTPS required
 - Deployment: Helm chart (Bitnami)
 
-**OpenFGA** - Authorization
+**Gravitino** - Iceberg Catalog
 
-- Fine-grained access control
-- Integrates with Lakekeeper
-- Deployment: Official Helm chart
-
-**Lakekeeper** - Iceberg Catalog
-
-- Apache Iceberg REST catalog service
-- Manages table metadata and schemas
-- Warehouses: `bronze`, `silver`, `gold`
-- HTTPS required
-- Deployment: Official Helm chart
+- Apache Iceberg REST catalog service (metadata + JDBC backend on PostgreSQL, data on MinIO)
+- Metalake: `stock_metalake`
+- OAuth2-protected via Keycloak
+- Deployment: local Helm chart (`storage/helm/gravitino`)
 
 **Documentation**: [storage/README.md](storage/README.md)
 
@@ -62,56 +53,31 @@ infra/k8s/
 
 - Event streaming platform
 - KRaft mode (no Zookeeper)
-- SASL authentication enabled
-- Topics: `csv-ingestion`
+- Listeners: `PLAINTEXT` (see `config/kafka.yaml`)
 - Single-node configuration for development
-- Deployment: Helm chart (Bitnami Legacy)
+- Deployment: Helm chart (Bitnami)
 
 **Kafka UI** - Management Interface
 
-- Web UI for Kafka cluster
+- Web UI for the Kafka cluster
 - Topic monitoring and message inspection
-- SASL connection to Kafka
 - Deployment: Helm chart (Provectus)
-
-**Apache NiFi** - Data Flow Automation
-
-- Visual data flow designer
-- Processors: ConsumeKafka, InvokeHTTP, ConvertRecord, PutS3Object
-- Flow: CSV chunks → Parquet → MinIO
-- Single-user authentication
-- Deployment: Helm chart
 
 **Apache Airflow** - Workflow Orchestration
 
-- DAG-based workflow management
-- Git-Sync for DAG deployment
-- KubernetesPodOperator for Spark jobs
+- DAG-based workflow management, version `3.0.2`
+- Git-Sync (SSH) pulls DAGs from `thaihung110/airflow-dags`
+- SparkKubernetesOperator submits jobs to Spark Operator
 - Executor: CeleryExecutor
 - Deployment: Official Helm chart
 
 **RBAC** - Role-Based Access Control
 
-- ClusterRole: `spark-submit-role`
-- ClusterRoleBinding: `spark-submit-binding`
-- Grants Airflow permission to manage Spark jobs
+- `airflow-spark-rbac.yaml`: namespace-scoped Role/RoleBinding in `stock-anomaly-detection`
+- `spark-submit-clusterrole.yaml` + `spark-submit-clusterrolebinding.yaml`: cluster-wide access for Airflow workers/triggerer and the Spark Operator service account
+- Grants Airflow permission to create/manage `SparkApplication` resources
 
 **Documentation**: [orchestration/README.md](orchestration/README.md)
-
----
-
-### Ingestion Layer (`ingestion/`)
-
-**Source API** - CSV Upload Service
-
-- FastAPI REST API
-- Endpoints: `/api/v1/upload/csv`, `/api/v1/health`
-- Chunks large CSV files
-- Publishes metadata to Kafka
-- Persistent storage: 10Gi PVC
-- Deployment: Custom Kubernetes manifests
-
-**Documentation**: [ingestion/README.md](ingestion/README.md)
 
 ---
 
@@ -120,23 +86,14 @@ infra/k8s/
 **Spark Operator** - Spark Job Management
 
 - Kubeflow Spark Operator
-- Manages SparkApplication CRDs
-- Automatic driver/executor pod lifecycle
-- Service account: `openhouse-spark-operator-spark`
+- Manages `SparkApplication` CRDs, automatic driver/executor pod lifecycle
 - Deployment: Helm chart
 
-**Argo CD** - GitOps Continuous Deployment
+**Trino** - SQL Query Engine
 
-- Declarative GitOps deployment
-- Manages Kubernetes resources
-- Credentials: `admin` / `admin123`
+- Queries the Iceberg lakehouse (Bronze/Silver/Gold) via Gravitino's REST catalog
+- OAuth2-protected via Keycloak
 - Deployment: Helm chart
-
-**Spark Applications**
-
-- `taxi-data-ingestion`: MinIO → Iceberg pipeline
-- Requires Lakekeeper warehouse permissions
-- OAuth2 authentication with Keycloak
 
 **Documentation**: [compute/README.md](compute/README.md)
 
@@ -146,13 +103,28 @@ infra/k8s/
 
 ### Prerequisites
 
-- Kubernetes cluster (v1.28+)
-- kubectl configured
-- Helm 3.x installed
-- Ingress controller (nginx)
-- StorageClass available
+- A Kubernetes cluster — this project runs on **kubeadm** (not a managed cloud cluster, not Minikube)
+- kubectl configured against that cluster
+- Helm 3.x installed, with the `bitnami`, `kafka-ui`, `apache-airflow`, `trino`, and `spark-operator` repos added
+- StorageClass and Ingress controller are **not** assumed to pre-exist — Step 0 below sets both up from scratch
 
 ### Installation Order
+
+**0. Bootstrap: StorageClass & Ingress-NGINX**
+
+Every other layer depends on both of these existing first.
+
+```bash
+cd storage
+
+# StorageClass `hostpath` with reclaimPolicy: Retain — every PVC in this project uses it
+./scripts/set_storageclass_retain.sh
+
+# Ingress-NGINX controller (resets any existing install, then applies the official manifest)
+./scripts/ingress.sh
+```
+
+**Guide**: [storage/README.md#prerequisites-storageclass--ingress-nginx](storage/README.md#prerequisites-storageclass--ingress-nginx)
 
 **1. Storage Layer** (Foundation)
 
@@ -169,12 +141,10 @@ cd storage
 ./scripts/create_secret_keycloak_tls.sh
 ./scripts/install_keycloak.sh
 
-# Authorization
-./scripts/install_openfga.sh
-
-# Catalog
-./scripts/create_secret_lakekeeper_tls.sh
-./scripts/install_lakekeeper.sh
+# Iceberg catalog
+./scripts/create_secret_gravitino_tls_ingress.sh
+./scripts/create_secret_gravitino_tls.sh
+./scripts/install_gravitino.sh
 ```
 
 **2. Orchestration Layer** (Messaging & Workflows)
@@ -186,39 +156,31 @@ cd orchestration
 ./scripts/install_kafka.sh
 ./scripts/install_kafka_ui.sh
 
-# Data flow
-./scripts/install_nifi.sh
+# Create this project's Kafka topics (8 topics, see orchestration/README.md)
+./scripts/create_kafka_topics_plaintext.sh
 
 # Workflow orchestration
 ./scripts/install_airflow.sh
 
 # RBAC for Spark jobs (REQUIRED before running Airflow Spark DAGs)
+kubectl apply -f rbac/airflow-spark-rbac.yaml
 kubectl apply -f rbac/spark-submit-clusterrole.yaml
 kubectl apply -f rbac/spark-submit-clusterrolebinding.yaml
 ```
 
-**3. Ingestion Layer** (Data Entry Points)
-
-```bash
-cd ingestion
-
-# CSV upload API
-./scripts/install_source_api.sh
-
-# Create Kafka topic
-./scripts/create_kafka_topics_sasl.sh
-```
-
-**4. Compute Layer** (Processing)
+**3. Compute Layer** (Processing + Query)
 
 ```bash
 cd compute
 
+# ServiceAccount + RBAC for Spark applications
+kubectl apply -f config/spark-serviceaccount-rbac.yaml
+
 # Spark operator
 ./scripts/install_spark_operators.sh
 
-# GitOps (optional)
-./scripts/install_argocd.sh
+# Trino (SQL query engine on the lakehouse)
+./scripts/install_trino.sh
 ```
 
 ---
@@ -230,88 +192,65 @@ cd compute
 Access Keycloak UI and configure:
 
 1. Create realm `iceberg`
-2. Create client `lakekeeper` (public)
-   - Add client scope `lakekeeper` with audience mapper
-3. Create client `spark` (confidential)
-   - Get client secret from Credentials tab
-   - Add client scope `sign`
-4. Create user `admin/admin`
+2. Create client `gravitino` (public) — Authorization Code + PKCE for the Gravitino Web UI
+3. Create client `spark` (confidential) — Client Credentials flow for Spark/Trino batch jobs
+   - Get client secret from the Credentials tab
+   - Add client scope `sign` and `gravitino` (see storage README for the audience-mapper details)
+4. Create user `admin` / `admin`
 
 **Guide**: [storage/README.md#keycloak-configuration](storage/README.md#keycloak-configuration)
 
-### 2. Lakekeeper Setup
+### 2. Gravitino Setup
 
-Access Lakekeeper UI and configure:
+Access the Gravitino UI and configure:
 
-1. Login with `admin/admin`
-2. Perform bootstrap
-3. Create warehouse connecting to MinIO
-4. Grant permissions to `service-account-spark`:
-   - Copy service account ID
-   - Grant ownership role on warehouse
+1. Create metalake `stock_metalake` (must exist before any Spark/Trino job runs)
+2. Create **3 Iceberg catalogs** — `bronze`, `silver`, `gold` (JDBC backend on `iceberg_catalog_db`, storage on the matching MinIO bucket)
 
-**Guide**: [compute/applications/spark/README.md#grant-lakekeeper-access](compute/applications/spark/README.md#grant-lakekeeper-access-first-run-only)
+> A script alternative exists (`storage/scripts/setup_gravitino_warehouses.sh`), but it only creates the `bronze` and `silver` catalogs — `gold` still has to be created manually via the UI either way.
 
-### 3. NiFi Flow Setup
+**Guide**: [storage/README.md#4-setting-up-the-metalake-and-warehouses-iceberg-catalogs](storage/README.md#4-setting-up-the-metalake-and-warehouses-iceberg-catalogs)
 
-Access NiFi UI and create processor group:
+### 3. MinIO Bucket Creation
 
-1. ConsumeKafka_2_6 (with SASL authentication)
-2. EvaluateJsonPath (extract metadata)
-3. InvokeHTTP (download CSV)
-4. ConvertRecord (CSV → Parquet)
-5. UpdateAttribute (set S3 path)
-6. PutS3Object (upload to MinIO)
-
-**Guide**: [orchestration/README.md#nifi-processor-group](orchestration/README.md#nifi-processor-group-csv-to-parquet-ingestion)
-
-### 4. MinIO Bucket Creation
-
-Create `raw` bucket in MinIO Console:
+Create the lakehouse buckets in the MinIO Console:
 
 ```bash
 # Port-forward MinIO
-kubectl port-forward -n default svc/minio 9001:9001
+kubectl port-forward -n stock-anomaly-detection svc/openhouse-minio 9001:9001
 
 # Access Console: http://localhost:9001
 # Login: admin / admin123
-# Create bucket: raw
+# Create buckets: bronze, silver, gold
 ```
 
-### 5. Airflow Git-Sync (Optional)
+### 4. Airflow Git-Sync (Required)
 
-Configure Airflow to sync DAGs from private GitHub repository:
+Airflow's `worker`, `triggerer`, and `dag-processor` pods use git-sync over SSH to clone DAGs from `git@github.com:thaihung110/airflow-dags.git`. The SSH secret is **not created by Helm** — it must exist before `install_airflow.sh` runs, or those pods will stay stuck in `Init:0/2`.
 
-1. Create private GitHub repo for DAGs
-2. Generate SSH key pair
-3. Add deploy key to GitHub
-4. Update `orchestration/config/airflow.yaml` with SSH secret
-5. Upgrade Airflow Helm release
-
-**Guide**: [../airflow/README.md#git-sync-setup](../airflow/README.md#-git-sync-setup-for-dag-deployment)
+**Guide**: [orchestration/README.md#prerequisite-ssh-secret-cho-git-sync-bắt-buộc-trước-khi-cài](orchestration/README.md#prerequisite-ssh-secret-cho-git-sync-bắt-buộc-trước-khi-cài)
 
 ---
 
 ## Access URLs
 
-Configure `/etc/hosts` or DNS with ingress IP:
+Configure `/etc/hosts` or DNS with the ingress IP:
 
 ```
 <ingress-ip> openhouse.airflow.test
 <ingress-ip> openhouse.kafka-ui.test
-<ingress-ip> openhouse.nifi.test
 <ingress-ip> openhouse.keycloak.test
-<ingress-ip> openhouse.lakekeeper.test
+<ingress-ip> openhouse.gravitino.test
+<ingress-ip> openhouse.trino.test
 ```
 
-| Service    | URL                               | Credentials             |
-| ---------- | --------------------------------- | ----------------------- |
-| Airflow    | https://openhouse.airflow.test    | admin / admin           |
-| Kafka UI   | https://openhouse.kafka-ui.test   | No auth                 |
-| NiFi       | https://openhouse.nifi.test       | admin / adminadminadmin |
-| Keycloak   | https://openhouse.keycloak.test   | admin / admin           |
-| Lakekeeper | https://openhouse.lakekeeper.test | admin / admin           |
-| Argo CD    | Port-forward 8080                 | admin / (get password)  |
+| Service   | URL                              | Credentials                         |
+| --------- | -------------------------------- | ----------------------------------- |
+| Airflow   | https://openhouse.airflow.test   | admin / admin                       |
+| Kafka UI  | https://openhouse.kafka-ui.test  | No auth                             |
+| Keycloak  | https://openhouse.keycloak.test  | admin / admin                       |
+| Gravitino | https://openhouse.gravitino.test | admin / admin (via Keycloak login)  |
+| Trino     | https://openhouse.trino.test     | via Keycloak OAuth2 (no fixed user) |
 
 ---
 
@@ -321,23 +260,19 @@ Configure `/etc/hosts` or DNS with ingress IP:
 
 - `storage/config/postgresql.yaml` - PostgreSQL configuration
 - `storage/config/keycloak.yaml` - Keycloak settings
-- `storage/config/lakekeeper.yaml` - Lakekeeper catalog config
+- `storage/config/gravitino.yaml` - Gravitino catalog config
+- `storage/config/minio.yaml` - MinIO configuration
 
 ### Orchestration Layer
 
 - `orchestration/config/kafka.yaml` - Kafka broker settings
 - `orchestration/config/kafka-ui.yaml` - Kafka UI configuration
-- `orchestration/config/nifi.yaml` - NiFi settings
 - `orchestration/config/airflow.yaml` - Airflow configuration
-
-### Ingestion Layer
-
-- `ingestion/application/source-api.yaml` - Source API deployment
 
 ### Compute Layer
 
 - `compute/config/spark.yaml` - Spark Operator configuration
-- `compute/config/argo.yaml` - Argo CD settings
+- `compute/config/trino.yaml` - Trino configuration
 
 ---
 
@@ -348,28 +283,24 @@ Reverse order of installation:
 ```bash
 # Compute
 cd compute
+./scripts/uninstall_trino.sh
 ./scripts/uninstall_spark_operators.sh
-./scripts/uninstall_argocd.sh
-
-# Ingestion
-cd ingestion
-./scripts/uninstall_source_api.sh
 
 # Orchestration
 cd orchestration
 ./scripts/uninstall_airflow.sh
-./scripts/uninstall_nifi.sh
 ./scripts/uninstall_kafka_ui.sh
 ./scripts/uninstall_kafka.sh
 
 # Storage
 cd storage
-./scripts/uninstall_lakekeeper.sh
-./scripts/uninstall_openfga.sh
+./scripts/uninstall_gravitino.sh
 ./scripts/uninstall_keycloak.sh
 ./scripts/uninstall_minio.sh
 ./scripts/uninstall_postgresql.sh
 ```
+
+> **PVs are not deleted along with these releases.** The `hostpath` StorageClass was created with `reclaimPolicy: Retain` (see Step 0 in the Deployment Guide), so the underlying PersistentVolumes survive `helm uninstall` and PVC deletion. Reinstalling a release with the same name will **not** automatically rebind its old PV — if you want a genuinely clean slate, manually delete the released PVs (`kubectl get pv`, filter by the old claim) after uninstalling.
 
 ---
 
@@ -379,13 +310,13 @@ cd storage
 
 ```bash
 # All pods
-kubectl get pods -A
+kubectl get pods -n stock-anomaly-detection
 
 # Specific component
-kubectl get pods -l app=<component-name>
+kubectl get pods -n stock-anomaly-detection -l app=<component-name>
 
 # Logs
-kubectl logs -f <pod-name> -n <namespace>
+kubectl logs -f <pod-name> -n stock-anomaly-detection
 ```
 
 ### Common Issues
@@ -406,16 +337,14 @@ kubectl logs -f <pod-name> -n <namespace>
 - Verify ingress controller: `kubectl get pods -n ingress-nginx`
 - Check ingress resources: `kubectl get ingress -A`
 
-**SASL authentication failures**:
+**Airflow git-sync pods stuck in `Init:0/2`**:
 
-- Verify credentials match Kafka configuration
-- Check security protocol: `SASL_PLAINTEXT`
+- The `airflow-ssh-secret` is missing — see [Airflow Git-Sync](#4-airflow-git-sync-required) above.
 
 ### Component-Specific Guides
 
 - Storage: [storage/README.md](storage/README.md)
 - Orchestration: [orchestration/README.md](orchestration/README.md)
-- Ingestion: [ingestion/README.md](ingestion/README.md)
 - Compute: [compute/README.md](compute/README.md)
 
 ---
@@ -425,21 +354,16 @@ kubectl logs -f <pod-name> -n <namespace>
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Kubernetes Cluster                        │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   Storage    │  │Orchestration │  │  Ingestion   │      │
-│  │              │  │              │  │              │      │
-│  │  PostgreSQL  │  │    Kafka     │  │  Source API  │      │
-│  │    MinIO     │  │   Kafka UI   │  │              │      │
-│  │  Keycloak    │  │    NiFi      │  └──────────────┘      │
-│  │  OpenFGA     │  │   Airflow    │                        │
-│  │ Lakekeeper   │  │              │  ┌──────────────┐      │
-│  │              │  └──────────────┘  │   Compute    │      │
-│  └──────────────┘                    │              │      │
-│                                      │Spark Operator│      │
-│                                      │   Argo CD    │      │
-│                                      │              │      │
-│                                      └──────────────┘      │
+│                                                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │   Storage    │  │Orchestration │  │   Compute    │        │
+│  │              │  │              │  │              │        │
+│  │  PostgreSQL  │  │    Kafka     │  │Spark Operator│        │
+│  │    MinIO     │  │   Kafka UI   │  │    Trino     │        │
+│  │  Keycloak    │  │   Airflow    │  │              │        │
+│  │  Gravitino   │  │              │  │              │        │
+│  │              │  │              │  │              │        │
+│  └──────────────┘  └──────────────┘  └──────────────┘        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -464,9 +388,8 @@ kubectl logs -f <pod-name> -n <namespace>
 
 ## Security Considerations
 
-- **HTTPS**: Keycloak and Lakekeeper require HTTPS
-- **SASL**: Kafka uses SASL_PLAINTEXT authentication
-- **OAuth2**: Spark jobs authenticate via Keycloak
+- **HTTPS**: Keycloak and Gravitino require HTTPS
+- **OAuth2**: Spark and Trino jobs authenticate via Keycloak
 - **RBAC**: Kubernetes RBAC for service accounts
 - **Secrets**: Use Kubernetes Secrets for sensitive data
 - **Network Policies**: Consider implementing for production
@@ -477,7 +400,6 @@ kubectl logs -f <pod-name> -n <namespace>
 
 - **Kafka UI**: Monitor Kafka topics and consumer groups
 - **Airflow UI**: DAG execution monitoring
-- **NiFi UI**: Data flow monitoring
 - **Spark UI**: Job execution metrics
 - **Prometheus**: Metrics collection (optional)
 - **Grafana**: Visualization (optional)

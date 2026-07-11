@@ -6,6 +6,9 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
 .venv/
 venv/
 env/
@@ -69,4 +72,4 @@ backup/
 docs_backup/
 docs/
 
-CLAUDE_backup.md
+CLAUDE.md

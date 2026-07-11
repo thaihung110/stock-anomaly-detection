@@ -6,10 +6,11 @@ Scala Spark jobs for the Stock Anomaly Detection pipeline.
 
 ```
 spark-application/
-├── <app-name>/          # Scala source code + Dockerfile
+├── <app-name>/          # Scala source code + Dockerfile + README.md
 │   ├── src/
 │   ├── build.sbt
-│   └── Dockerfile
+│   ├── Dockerfile
+│   └── README.md
 ├── k8s/                 # SparkApplication CRDs + ConfigMaps + Secret template
 │   ├── spark-app-secrets.yaml
 │   ├── company-info-loader-symbols-configmap.yaml
@@ -23,20 +24,38 @@ spark-application/
 
 ---
 
+### Shared Architecture
+
+Every app in this directory follows the same code shape (see any app's `README.md` for its specifics):
+
+```
+<app>/src/main/scala/com/stockanomalydetection/<package>/
+├── <AppName>.scala              # entrypoint: builds SparkSession, wires config → catalog → pipeline
+├── config/AppConfig.scala       # case class populated from env vars via AppConfig.fromEnv()
+├── config/CatalogConfigurator.scala  # registers the Gravitino Iceberg REST catalog(s) + ensures target tables exist
+└── pipeline/<Name>Pipeline.scala     # the actual business logic, as pure functions (read → transform → write)
+```
+
+All apps authenticate to Gravitino's Iceberg REST catalog via OAuth2 client-credentials against Keycloak (client `spark`), and to MinIO via static access/secret keys — both injected through the same handful of env vars (`GRAVITINO_URI`, `GRAVITINO_OAUTH_CLIENT_SECRET`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`). Batch apps use `MERGE INTO` or `overwritePartitions()` for idempotent re-runs; streaming apps use Iceberg's streaming sink with a per-app checkpoint location.
+
+---
+
 ### Applications
 
-| Application | Image | Description |
-|---|---|---|
-| `company-info-loader` | `hungvt0110/company-info-loader:v0.2` | Fetch company info from Finnhub API → `bronze.raw_company_info` |
-| `ohlcv-daily-loader` | `hungvt0110/ohlcv-daily-loader:v0.2` | Load daily OHLCV from yfinance → `bronze.raw_ohlcv_daily` |
-| `ohlcv-daily-cleaner` | `hungvt0110/ohlcv-daily-cleaner:v0.2` | Clean OHLCV → `silver.ohlcv_daily` |
-| `news-ingest-stream` | `hungvt0110/news-ingest-stream:v2.7` | Structured Streaming: Kafka → `bronze.raw_news_articles` |
-| `news-cleaner` | `hungvt0110/news-cleaner:v0.3` | Clean news → `silver.news_clean` |
-| `rule-engine-context-builder` | `hungvt0110/rule-engine-context-builder:v0.2` | Build `gold.rule_engine_context` (20d rolling stats) |
-| `dim-loader` | `hungvt0110/dim-loader:v0.5` | Load dimension tables (dim_symbol, dim_date, ...) |
-| `fact-ohlcv-daily-builder` | `hungvt0110/fact-ohlcv-daily-builder:v0.2` | Build `gold.fact_ohlcv_daily` |
-| `trades-ohlcv-stream` | `hungvt0110/trades-ohlcv-stream:v1.1` | Structured Streaming: Kafka trades → `silver.ohlcv_1min` |
-| `sync-custom-alerts` | `hungvt0110/sync-custom-alerts:v0.1` | OLTP→OLAP bridge: PostgreSQL → `gold.fact_alert_history` |
+| Application                   | Layer  | Image (pattern: `<your-registry>/<app-name>:<tag>`) | Description                                                                               | Docs                                            |
+| ----------------------------- | ------ | ----------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `company-info-loader`         | Bronze | `<your-registry>/company-info-loader:<tag>`           | Fetch company info from Finnhub API → `bronze.raw_company_info`                           | [README](company-info-loader/README.md)         |
+| `ohlcv-daily-loader`          | Bronze | `<your-registry>/ohlcv-daily-loader:<tag>`            | Load daily OHLCV from yfinance (watermark-incremental) → `bronze.raw_ohlcv_daily`         | [README](ohlcv-daily-loader/README.md)          |
+| `news-ingest-stream`          | Bronze | `<your-registry>/news-ingest-stream:<tag>`            | Structured Streaming: Kafka news → `bronze.raw_news_articles`                             | [README](news-ingest-stream/README.md)          |
+| `ohlcv-daily-cleaner`         | Silver | `<your-registry>/ohlcv-daily-cleaner:<tag>`           | Clean OHLCV → `silver.ohlcv_daily`                                                        | [README](ohlcv-daily-cleaner/README.md)         |
+| `news-cleaner`                | Silver | `<your-registry>/news-cleaner:<tag>`                  | Dedupe + clean news → `silver.news_clean`                                                 | [README](news-cleaner/README.md)                |
+| `trades-ohlcv-stream`         | Silver | `<your-registry>/trades-ohlcv-stream:<tag>`           | Structured Streaming: Kafka trades → 1-min bars → `silver.ohlcv_1min`                     | [README](trades-ohlcv-stream/README.md)         |
+| `dim-loader`                  | Gold   | `<your-registry>/dim-loader:<tag>`                    | Load/refresh dimension tables (`dim_symbol` SCD2, `dim_date`, `dim_time`, static lookups) | [README](dim-loader/README.md)                  |
+| `fact-ohlcv-daily-builder`    | Gold   | `<your-registry>/fact-ohlcv-daily-builder:<tag>`      | Compute rolling stats + technical indicators → `gold.fact_ohlcv_daily`                    | [README](fact-ohlcv-daily-builder/README.md)    |
+| `rule-engine-context-builder` | Gold   | `<your-registry>/rule-engine-context-builder:<tag>`   | Single-day snapshot for the Rule Engine → `gold.rule_engine_context`                      | [README](rule-engine-context-builder/README.md) |
+| `sync-custom-alerts`          | Gold   | `<your-registry>/sync-custom-alerts:<tag>`            | OLTP→OLAP bridge: PostgreSQL → `gold.fact_alert_history`                                  | [README](sync-custom-alerts/README.md)          |
+
+> `<your-registry>` is whatever you set `REGISTRY` to in `scripts/build-and-push-<app>.sh` (Docker Hub username, GHCR path, private registry host, etc.) — see "Build and Push Docker Image" below. It defaults to the original author's personal Docker Hub (`hungvt0110`) in every script; you need to change it before building your own images.
 
 ---
 
@@ -59,12 +78,13 @@ kubectl apply -f spark-application/k8s/spark-app-secrets.yaml -n stock-anomaly-d
 
 `k8s/spark-app-secrets.yaml` contains:
 
-| Key | Description |
-|---|---|
-| `MINIO_ACCESS_KEY` | MinIO access key (default: `admin`) |
-| `MINIO_SECRET_KEY` | MinIO secret key (default: `admin123`) |
-| `GRAVITINO_OAUTH_CLIENT_SECRET` | Keycloak client secret for the `spark` client |
-| `FINNHUB_API_KEY` | Finnhub API key — used by `company-info-loader` |
+| Key                             | Description                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------- |
+| `MINIO_ACCESS_KEY`              | MinIO access key (default: `admin`)                                                      |
+| `MINIO_SECRET_KEY`              | MinIO secret key (default: `admin123`)                                                   |
+| `GRAVITINO_OAUTH_CLIENT_SECRET` | Keycloak client secret for the `spark` client                                            |
+| `FINNHUB_API_KEY`               | Finnhub API key — used by `company-info-loader`                                          |
+| `PG_PASSWORD`                   | PostgreSQL password for the `stock_anomaly` OLTP database — used by `sync-custom-alerts` |
 
 > **Security note**: `spark-app-secrets.yaml` contains real credentials. Do not commit real values to git — use a template and inject via CI/CD or Vault.
 
@@ -102,12 +122,34 @@ kubectl apply -f spark-application/k8s/ohlcv-daily-loader-symbols-configmap.yaml
 
 ### Build and Push Docker Image
 
+Each `scripts/build-and-push-<app>.sh` hardcodes its own registry — it does **not** read your Docker config or take the registry as an argument:
+
+```bash
+# Contents of every build-and-push-<app>.sh (only SERVICE_NAME differs per app)
+VERSION="$1"
+REGISTRY="hungvt0110"                    # ← the original author's Docker Hub — change this
+SERVICE_NAME="<app-name>"
+IMAGE_NAME="$REGISTRY/$SERVICE_NAME:$VERSION"
+
+docker build -f "<app-name>/Dockerfile" -t "$IMAGE_NAME" "<app-name>/"
+docker push "$IMAGE_NAME"
+```
+
+**Before building for the first time**, for each app you plan to run:
+
+1. Open `scripts/build-and-push-<app>.sh` and change `REGISTRY="hungvt0110"` to your own registry (e.g. your Docker Hub username, a GHCR path like `ghcr.io/<you>`, or a private registry host).
+2. Update the `image:` field in the matching `k8s/<app>-spark-application.yaml` to the **same** registry — the SparkApplication CRD pulls whatever is hardcoded there; it has no knowledge of what the build script pushed.
+3. Make sure you're authenticated to that registry (`docker login <registry>`) before pushing.
+
+Then build and push:
+
 ```bash
 cd spark-application
 ./scripts/build-and-push-<app-name>.sh <version>
 
-# Example:
-./scripts/build-and-push-company-info-loader.sh v0.3
+# Example (after editing REGISTRY in the script to your own):
+./scripts/build-and-push-company-info-loader.sh v0.4
+# → builds and pushes <your-registry>/company-info-loader:v0.4
 ```
 
 ---
@@ -124,6 +166,8 @@ cd spark-application
 ./scripts/stop-<app-name>.sh
 ```
 
+> ⚠️ Not every script follows the `<app-name>` pattern exactly: `news-ingest-stream` uses `run-news-ingest.sh`/`stop-news-ingest.sh`, and `trades-ohlcv-stream` uses `run-trades-ohlcv.sh`/`stop-trades-ohlcv.sh`. Check `scripts/` if a `run-<app-name>.sh` doesn't exist.
+
 Monitor logs:
 
 ```bash
@@ -134,40 +178,20 @@ kubectl logs -f -n stock-anomaly-detection <app-name>-driver
 
 ### Known Issues
 
-#### `rule-engine-context-builder` fails with "0 rows produced" on weekends or early morning runs
+Full detail lives in each app's own README. Summary of what's currently flagged:
 
-**Symptom**
+| App                                    | Issue                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rule-engine-context-builder`          | Fails with "0 rows produced" on weekend/early-morning runs (UTC-yesterday default outruns actual trading-day data) — [see README](rule-engine-context-builder/README.md#known-issues). The current `k8s/` YAML still has a hardcoded `AS_OF_DATE_KEY` left over from the last manual fix.              |
+| `dim-loader`                           | `k8s/dim-loader-spark-application.yaml` maps `AWS_ACCESS_KEY_ID` to the wrong secret key (`MINIO_SECRET_KEY` instead of `MINIO_ACCESS_KEY`) — [see README](dim-loader/README.md#known-issues). Also has stale-but-harmless `AppConfig.scala` OAuth defaults that don't match what's actually deployed. |
+| `sync-custom-alerts`                   | If the Iceberg write succeeds but the watermark update fails, the next run re-syncs and duplicates rows — documented, not automatically handled — [see README](sync-custom-alerts/README.md#known-issues).                                                                                             |
+| `ohlcv-daily-cleaner` / `news-cleaner` | Both do a **full table read** every run (no incremental filter) — cost grows with total accumulated history, not just new data.                                                                                                                                                                        |
 
-```
-RuntimeException: overwritePartitions to gravitino_catalog.gold.rule_engine_context aborted:
-0 rows produced. Check that fact_ohlcv_daily has data for the target date_key and dim_symbol is populated.
-```
+---
 
-**Root cause**
+### Testing
 
-`rule-engine-context-builder` defaults `asOfDateKey` to **UTC yesterday** (`LocalDate.now(ZoneOffset.UTC).minusDays(1)`). It then filters `fact_ohlcv_daily` for exactly that `date_key`.
-
-Yahoo Finance returns OHLCV data only for **trading days** (Mon–Fri, excluding US market holidays). When the pipeline runs on a **Saturday or before NYSE open (~14:30 UTC)**, the most recent trading day in `fact_ohlcv_daily` is the **Friday before last**, not yesterday. The filter produces 0 rows and the job aborts.
-
-Confirmed behaviour (2026-05-24, Saturday):
-- `ohlcv-daily-loader` fetched data ending at `trade_date = 2026-05-22` (Friday)
-- `defaultAsOfDateKey()` returned `20260523` (Friday) — no data for that date in the fact table
-- Fix: set `AS_OF_DATE_KEY=20260522`
-
-**Fix**
-
-Override `AS_OF_DATE_KEY` in `k8s/rule-engine-context-builder-spark-application.yaml` to the last known trading day before running manually:
-
-```yaml
-- name: AS_OF_DATE_KEY
-  value: "20260522"   # set to the last trading day in fact_ohlcv_daily
-```
-
-Remove or update this env var after the weekend so the production schedule resumes using the automatic UTC-yesterday default (leave the key absent for normal weekday runs).
-
-**When this does NOT happen**
-
-On a normal weekday run (pipeline triggered after NYSE close, ~21:00 UTC+), `ohlcv-daily-loader` will have fetched that day's data, `fact_ohlcv_daily` will contain the matching `date_key`, and `defaultAsOfDateKey()` will resolve correctly without any override.
+**No app in this directory has automated tests yet.** Every `<app>/src/test/scala/.../` directory contains only a `.gitkeep` placeholder. This applies uniformly across all 10 apps — treat any pipeline change as untested until this changes.
 
 ---
 

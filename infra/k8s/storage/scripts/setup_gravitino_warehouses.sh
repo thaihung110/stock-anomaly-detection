@@ -18,12 +18,12 @@ set -euo pipefail
 GRAVITINO_ENDPOINT="${GRAVITINO_ENDPOINT:-http://openhouse.gravitino.test}"
 
 # Tên metalake — khớp với dynamicConfigProvider.metalake trong gravitino.yaml
-METALAKE_NAME="${METALAKE_NAME:-my-metalake}"
+METALAKE_NAME="${METALAKE_NAME:-stock_metalake}"
 
 # PostgreSQL dùng làm Iceberg TABLE METADATA backend (dùng chung cho tất cả catalogs)
 # Đây là DB lưu Iceberg schemas/snapshots/manifests — KHÁC với DB entity store của Gravitino
 ICEBERG_JDBC_HOST="${ICEBERG_JDBC_HOST:-openhouse-postgresql-primary}"
-ICEBERG_JDBC_DB="${ICEBERG_JDBC_DB:-iceberg_catalog}"
+ICEBERG_JDBC_DB="${ICEBERG_JDBC_DB:-iceberg_catalog_db}"
 ICEBERG_JDBC_USER="${ICEBERG_JDBC_USER:-iceberg}"
 ICEBERG_JDBC_PASSWORD="${ICEBERG_JDBC_PASSWORD:-iceberg}"
 
