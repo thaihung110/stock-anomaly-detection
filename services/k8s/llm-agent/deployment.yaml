@@ -30,7 +30,7 @@ data:
   #   "openai:gpt-4o"                        (upgrade for ambiguous cases)
   #   "google_genai:gemini-2.5-flash-lite"   (Gemini alternative)
   #   "anthropic:claude-haiku-4-5"           (Anthropic alternative)
-  LLM_MODEL: "openai:gpt-4o-mini"
+  LLM_MODEL: "openai:gpt-5-mini"
   LLM_ESCALATION_MODEL: ""
 
   # Bronze catalog — raw.raw_news_articles (Finnhub streaming, ~30s lag)
@@ -44,7 +44,7 @@ data:
   SILVER_WAREHOUSE: "silver"
   NEWS_DIGEST_TABLE: "normalized.news_clean"
   NEWS_LOOKBACK_DAYS: "3"
-  NEWS_TOP_K: "8"
+  NEWS_TOP_K: "20"
 
   # Shared Iceberg REST catalog config (same Gravitino instance, different warehouses)
   ICEBERG_CATALOG_URI: "http://openhouse-gravitino:9001/iceberg/"

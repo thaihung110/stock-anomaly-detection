@@ -12,7 +12,7 @@ import json
 
 import pytest
 
-from alert_service.schema import (
+from alert_service.core.schema import (
     AlertSeverity,
     ConfirmedAlertEvent,
     FollowUpEvent,

@@ -9,9 +9,3 @@ NAMESPACE="stock-anomaly-detection"
 RELEASE="openhouse-postgresql"
 
 helm uninstall --namespace "${NAMESPACE}" "${RELEASE}"
-
-echo "Deleting PVCs for release ${RELEASE}..."
-kubectl delete pvc \
-  --namespace "${NAMESPACE}" \
-  --selector "app.kubernetes.io/instance=${RELEASE}" \
-  --ignore-not-found

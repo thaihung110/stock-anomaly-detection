@@ -11,14 +11,26 @@ import java.util.Properties
 object SyncCustomAlertsPipeline {
   private val logger = LogManager.getLogger(getClass)
 
-  private def newConnection(cfg: AppConfig): java.sql.Connection = {
-    val conn = DriverManager.getConnection(cfg.jdbcUrl, cfg.pgUser, cfg.pgPassword)
-    // Ensure all timestamp comparisons use UTC
-    val stmt = conn.createStatement()
-    stmt.execute("SET TIME ZONE 'UTC'")
-    stmt.close()
-    conn
-  }
+  private val MAX_CONNECT_RETRY = 3
+  private val CONNECT_RETRY_DELAY_MS = 2000L
+
+  // Postgres may briefly refuse connections right after the earlier Spark
+  // apps in the same DAG run finish (connection pool cold start); retry a
+  // few times instead of failing the whole job on one transient blip.
+  private def newConnection(cfg: AppConfig, retries: Int = MAX_CONNECT_RETRY): java.sql.Connection =
+    try {
+      val conn = DriverManager.getConnection(cfg.jdbcUrl, cfg.pgUser, cfg.pgPassword)
+      // Ensure all timestamp comparisons use UTC
+      val stmt = conn.createStatement()
+      stmt.execute("SET TIME ZONE 'UTC'")
+      stmt.close()
+      conn
+    } catch {
+      case e: Exception if retries > 0 =>
+        logger.warn(s"Postgres connection failed: ${e.getMessage}, retrying ($retries left)")
+        Thread.sleep(CONNECT_RETRY_DELAY_MS)
+        newConnection(cfg, retries - 1)
+    }
 
   def readWatermark(spark: SparkSession, cfg: AppConfig): Timestamp = {
     val conn = newConnection(cfg)

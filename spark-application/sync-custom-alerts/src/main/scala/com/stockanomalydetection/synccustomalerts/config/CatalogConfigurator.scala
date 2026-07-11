@@ -1,8 +1,27 @@
 package com.stockanomalydetection.synccustomalerts.config
 
+import org.apache.logging.log4j.LogManager
 import org.apache.spark.sql.SparkSession
 
 object CatalogConfigurator {
+  private val logger = LogManager.getLogger(getClass)
+
+  private val MAX_DDL_RETRY = 3
+  private val DDL_RETRY_DELAY_MS = 2000L
+
+  // The first DDL statement against the Gravitino/Iceberg REST catalog also
+  // triggers the OAuth2 token exchange with Keycloak (lazy catalog init).
+  // Retry a few times so a cold-start hiccup on either service doesn't
+  // fail the whole job.
+  private def withRetry[A](description: String, retries: Int = MAX_DDL_RETRY)(action: => A): A =
+    try {
+      action
+    } catch {
+      case e: Exception if retries > 0 =>
+        logger.warn(s"$description failed: ${e.getMessage}, retrying ($retries left)")
+        Thread.sleep(DDL_RETRY_DELAY_MS)
+        withRetry(description, retries - 1)(action)
+    }
 
   def configure(spark: SparkSession, cfg: AppConfig): Unit = {
     configureCatalog(spark, "gravitino_gold", "gold", cfg)
@@ -43,32 +62,36 @@ object CatalogConfigurator {
     val namespace = parts.dropRight(1).mkString(".")
 
     try {
-      spark.sql(s"CREATE NAMESPACE IF NOT EXISTS $namespace")
+      withRetry(s"Create namespace $namespace") {
+        spark.sql(s"CREATE NAMESPACE IF NOT EXISTS $namespace")
+      }
     } catch {
       case e: Exception =>
         throw new RuntimeException(s"Failed to create namespace $namespace: ${e.getMessage}", e)
     }
 
     try {
-      spark.sql(s"""
-        CREATE TABLE IF NOT EXISTS ${cfg.factTable} (
-          alert_id        STRING  NOT NULL  COMMENT 'UUID of the alert event',
-          symbol          STRING  NOT NULL  COMMENT 'Ticker symbol',
-          event_ts        STRING  NOT NULL  COMMENT 'ISO-8601 UTC timestamp when the alert fired',
-          rule_name       STRING  NOT NULL  COMMENT 'Rule description (system rule name or custom field/op/threshold)',
-          severity        STRING  NOT NULL  COMMENT 'Alert severity: INFO, MEDIUM, HIGH',
-          triggered_value DOUBLE  NOT NULL  COMMENT 'Field value at trigger time',
-          threshold       DOUBLE  NOT NULL  COMMENT 'Threshold that was crossed',
-          alert_source    STRING  NOT NULL  COMMENT 'system (rule engine) or user_custom (sync job)',
-          written_at      STRING  NOT NULL  COMMENT 'ISO-8601 UTC timestamp when the row was written',
-          user_id         STRING            COMMENT 'Owner of the custom alert (NULL for system alerts)'
-        )
-        USING iceberg
-        TBLPROPERTIES (
-          'write.format.default'            = 'parquet',
-          'write.parquet.compression-codec' = 'zstd'
-        )
-      """)
+      withRetry(s"Create table ${cfg.factTable}") {
+        spark.sql(s"""
+          CREATE TABLE IF NOT EXISTS ${cfg.factTable} (
+            alert_id        STRING  NOT NULL  COMMENT 'UUID of the alert event',
+            symbol          STRING  NOT NULL  COMMENT 'Ticker symbol',
+            event_ts        STRING  NOT NULL  COMMENT 'ISO-8601 UTC timestamp when the alert fired',
+            rule_name       STRING  NOT NULL  COMMENT 'Rule description (system rule name or custom field/op/threshold)',
+            severity        STRING  NOT NULL  COMMENT 'Alert severity: INFO, MEDIUM, HIGH',
+            triggered_value DOUBLE  NOT NULL  COMMENT 'Field value at trigger time',
+            threshold       DOUBLE  NOT NULL  COMMENT 'Threshold that was crossed',
+            alert_source    STRING  NOT NULL  COMMENT 'system (rule engine) or user_custom (sync job)',
+            written_at      STRING  NOT NULL  COMMENT 'ISO-8601 UTC timestamp when the row was written',
+            user_id         STRING            COMMENT 'Owner of the custom alert (NULL for system alerts)'
+          )
+          USING iceberg
+          TBLPROPERTIES (
+            'write.format.default'            = 'parquet',
+            'write.parquet.compression-codec' = 'zstd'
+          )
+        """)
+      }
     } catch {
       case e: Exception =>
         throw new RuntimeException(s"Failed to create table ${cfg.factTable}: ${e.getMessage}", e)
