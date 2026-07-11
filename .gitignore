@@ -67,3 +67,6 @@ docs/data-lineage.md
 docs/intraday-alert-consumer-plan.md
 backup/
 docs_backup/
+docs/
+
+CLAUDE_backup.md
