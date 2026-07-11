@@ -194,13 +194,13 @@ analytics sink.
 
 **Custom alerts:**
 
-| Command | Effect |
-|---|---|
-| `/setalert <SYMBOL\|*> <field> <op> <threshold> [once\|every]` | Create a rule; triggers a `rule-engine` hot reload |
-| `/listalerts` | List your rules (active/paused/triggered), indexed for use in the commands below |
-| `/pausealert <n>` / `/resumealert <n>` / `/resetalert <n>` | Change a rule's status |
-| `/delalert <n>` | Delete a rule; triggers a hot reload |
-| `/alerthistory [SYMBOL]` | Show fired custom-alert events |
+| Command                                                        | Effect                                                                           |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `/setalert <SYMBOL\|*> <field> <op> <threshold> [once\|every]` | Create a rule; triggers a `rule-engine` hot reload                               |
+| `/listalerts`                                                  | List your rules (active/paused/triggered), indexed for use in the commands below |
+| `/pausealert <n>` / `/resumealert <n>` / `/resetalert <n>`     | Change a rule's status                                                           |
+| `/delalert <n>`                                                | Delete a rule; triggers a hot reload                                             |
+| `/alerthistory [SYMBOL]`                                       | Show fired custom-alert events                                                   |
 
 **Fields:** `price`, `daily_return`, `day_volume`, `volume_zscore`, `volume_ratio_20d`,
 `price_zscore`, `rsi_14`, `bb_position` (last two are end-of-previous-day batch values, not
@@ -208,13 +208,13 @@ live intraday) · **Operators:** `>` `<` `>=` `<=` `CROSSES_UP` `CROSSES_DOWN`
 
 **Watchlist & preferences:**
 
-| Command | Effect |
-|---|---|
+| Command                                                | Effect                                            |
+| ------------------------------------------------------ | ------------------------------------------------- |
 | `/watch <SYMBOL>` / `/unwatch <SYMBOL>` / `/watchlist` | Manage symbols you want system-alert coverage for |
-| `/systemalerts <all\|watchlist\|off>` | Choose which system anomalies you receive |
-| `/customalerts <on\|off>` | Toggle custom-alert delivery |
-| `/preferences` | Show your current settings |
-| `/start` / `/help` | Onboarding + full command list |
+| `/systemalerts <all\|watchlist\|off>`                  | Choose which system anomalies you receive         |
+| `/customalerts <on\|off>`                              | Toggle custom-alert delivery                      |
+| `/preferences`                                         | Show your current settings                        |
+| `/start` / `/help`                                     | Onboarding + full command list                    |
 
 On `/setalert`/`/delalert`: the bot inserts/deletes the PostgreSQL row, then calls
 `rule-engine`'s `POST /internal/reload-user-rules`. On any watchlist/preference change: the
@@ -354,11 +354,11 @@ validation, watchlist/preference services — no handler-level tests yet). See
 
 ## Documentation
 
-| Document | Purpose |
-| --- | --- |
-| [`services/README.md`](services/README.md) | All 7 microservices — architecture, Kafka contracts, config, secrets, build/run |
-| [`spark-application/README.md`](spark-application/README.md) | All 10 Spark jobs — pipeline steps, resource sizing, build/run |
-| [`infra/k8s/README.md`](infra/k8s/README.md) | Cluster bootstrap — storage, compute, orchestration, install order |
+| Document                                                     | Purpose                                                                         |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| [`services/README.md`](services/README.md)                   | All 7 microservices — architecture, Kafka contracts, config, secrets, build/run |
+| [`spark-application/README.md`](spark-application/README.md) | All 10 Spark jobs — pipeline steps, resource sizing, build/run                  |
+| [`infra/k8s/README.md`](infra/k8s/README.md)                 | Cluster bootstrap — storage, compute, orchestration, install order              |
 
 Every service and every Spark app also has its own README one level down
 (`services/<name>/README.md`, `spark-application/<name>/README.md`) with full detail —
