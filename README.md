@@ -64,7 +64,7 @@ Full per-layer detail lives in each area's own README: [`services/README.md`](se
 
 | Layer          | Technology                                        | Role                                                                |
 | -------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
-| Streaming      | Apache Kafka (Redpanda for local dev)             | Event backbone — quotes, trades, news, alerts                       |
+| Streaming      | Apache Kafka                                      | Event backbone — quotes, trades, news, alerts                       |
 | Microservices  | FastStream + FastAPI (async Python 3.12)          | Rule engine, LLM agent, alert service, producers, bot               |
 | LLM            | LangGraph + `init_chat_model` (provider-agnostic) | News retrieval + anomaly classification                             |
 | Batch / Stream | Apache Spark (Scala)                              | Daily rolling stats, tick aggregation, OLTP→Iceberg sync            |

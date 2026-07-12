@@ -37,13 +37,13 @@ Only responds in a **private chat** (group/channel triggers a "please DM me" rep
 
 ### Custom alert commands (`handlers/alert_commands.py` → `AlertService`)
 
-| Command | Effect | Triggers hot-reload? |
-|---|---|---|
-| `/setalert <SYMBOL\|*> <field> <op> <threshold> [once\|every]` | Validates field/operator/threshold/frequency tokens, inserts a new `ACTIVE` rule (default `cooldown_min=60`) | **Yes** — `rule-engine`'s `/internal/reload-user-rules` |
-| `/listalerts` | Lists all rules for the user, grouped active/paused/triggered; stores a `{1: rule_id, 2: ...}` map in `context.user_data` so subsequent commands accept a short number instead of a UUID | No |
-| `/pausealert <n>` / `/resumealert <n>` / `/resetalert <n>` | Status transition only if the rule belongs to the calling user | **No** — status flips are picked up by `rule-engine` next time it evaluates a quote against its already-loaded rule cache; see Known Issues |
-| `/delalert <n>` | Deletes the rule (ownership-checked) | **Yes** — reload |
-| `/alerthistory [SYMBOL]` | Lists `user_alert_events` for the user, optionally filtered by symbol | No |
+| Command                                                        | Effect                                                                                                                                                                                   | Triggers hot-reload?                                                                                                                        |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/setalert <SYMBOL\|*> <field> <op> <threshold> [once\|every]` | Validates field/operator/threshold/frequency tokens, inserts a new `ACTIVE` rule (default `cooldown_min=60`)                                                                             | **Yes** — `rule-engine`'s `/internal/reload-user-rules`                                                                                     |
+| `/listalerts`                                                  | Lists all rules for the user, grouped active/paused/triggered; stores a `{1: rule_id, 2: ...}` map in `context.user_data` so subsequent commands accept a short number instead of a UUID | No                                                                                                                                          |
+| `/pausealert <n>` / `/resumealert <n>` / `/resetalert <n>`     | Status transition only if the rule belongs to the calling user                                                                                                                           | **No** — status flips are picked up by `rule-engine` next time it evaluates a quote against its already-loaded rule cache; see Known Issues |
+| `/delalert <n>`                                                | Deletes the rule (ownership-checked)                                                                                                                                                     | **Yes** — reload                                                                                                                            |
+| `/alerthistory [SYMBOL]`                                       | Lists `user_alert_events` for the user, optionally filtered by symbol                                                                                                                    | No                                                                                                                                          |
 
 `_resolve_rule_id` accepts either the 1-based index from the last `/listalerts` or a raw UUID string — lets mobile users type `/pausealert 1` instead of pasting a 36-character UUID. Fields carrying `rsi_14`/`bb_position` get an explicit "batch daily" note appended to every reply that shows them, per `CLAUDE.md`'s Real-Time vs. Batch Field Distinction.
 
@@ -57,10 +57,10 @@ Only responds in a **private chat** (group/channel triggers a "please DM me" rep
 
 ## HTTP Endpoints Called (outbound)
 
-| Target Service | Endpoint | Called from | Purpose |
-|---|---|---|---|
-| `rule-engine` | `POST /internal/reload-user-rules` | `AlertService.create_alert` / `.delete_alert` | Refresh rule-engine's in-memory custom-rule cache + context |
-| `alert-service` | `POST /internal/reload-subscribers` | `WatchlistService.watch`/`.unwatch`, `PreferenceService.set_system_alert_mode`/`.toggle_custom_alerts` | Invalidate the subscriber TTL cache immediately |
+| Target Service  | Endpoint                            | Called from                                                                                            | Purpose                                                     |
+| --------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `rule-engine`   | `POST /internal/reload-user-rules`  | `AlertService.create_alert` / `.delete_alert`                                                          | Refresh rule-engine's in-memory custom-rule cache + context |
+| `alert-service` | `POST /internal/reload-subscribers` | `WatchlistService.watch`/`.unwatch`, `PreferenceService.set_system_alert_mode`/`.toggle_custom_alerts` | Invalidate the subscriber TTL cache immediately             |
 
 Both clients (`RuleEngineClient`, `AlertServiceClient`) catch `httpx.HTTPError` and log a warning rather than raising — a reload failure never blocks the user-facing command from completing (the mutation is already durably in Postgres; the next TTL expiry or manual reload picks it up eventually).
 
@@ -68,15 +68,15 @@ Both clients (`RuleEngineClient`, `AlertServiceClient`) catch `httpx.HTTPError` 
 
 Env vars read by `Settings` (`config.py`):
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | **Yes** | — | |
-| `WEBHOOK_HOST` | **Yes** | — | Public HTTPS URL, e.g. an ngrok tunnel in local dev |
-| `WEBHOOK_PATH` | No | `/webhook` | |
-| `APP_PORT` | No | `8080` | |
-| `PG_DSN` | **Yes** | — | `postgresql://user:pass@host:5432/dbname` — assembled from `PG_*` parts via `env` interpolation in k8s, not by `Settings` itself (unlike `rule-engine`/`alert-service`) |
-| `RULE_ENGINE_URL` | **Yes** | — | e.g. `http://rule-engine:8080` |
-| `ALERT_SERVICE_URL` | No | `http://alert-service:8080` | |
+| Variable             | Required | Default                     | Description                                                                                                                                                             |
+| -------------------- | -------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TELEGRAM_BOT_TOKEN` | **Yes**  | —                           |                                                                                                                                                                         |
+| `WEBHOOK_HOST`       | **Yes**  | —                           | Public HTTPS URL, e.g. an ngrok tunnel in local dev                                                                                                                     |
+| `WEBHOOK_PATH`       | No       | `/webhook`                  |                                                                                                                                                                         |
+| `APP_PORT`           | No       | `8080`                      |                                                                                                                                                                         |
+| `PG_DSN`             | **Yes**  | —                           | `postgresql://user:pass@host:5432/dbname` — assembled from `PG_*` parts via `env` interpolation in k8s, not by `Settings` itself (unlike `rule-engine`/`alert-service`) |
+| `RULE_ENGINE_URL`    | **Yes**  | —                           | e.g. `http://rule-engine:8080`                                                                                                                                          |
+| `ALERT_SERVICE_URL`  | No       | `http://alert-service:8080` |                                                                                                                                                                         |
 
 ## Prerequisites: Public Webhook Tunnel
 
